@@ -6,6 +6,7 @@ import { PostingTracker } from "@/components/posting/PostingTracker";
 import { AllowanceTracker } from "@/components/allowance/AllowanceTracker";
 import { ClearanceChecklist } from "@/components/clearance/ClearanceChecklist";
 import { Forum } from "@/components/forum/Forum";
+import { UserProfile } from "@/components/profile/UserProfile";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabType>("home");
@@ -22,6 +23,8 @@ const Index = () => {
         return <ClearanceChecklist />;
       case "forum":
         return <Forum />;
+      case "profile":
+        return <UserProfile />;
       default:
         return <HomePage onNavigate={setActiveTab} />;
     }

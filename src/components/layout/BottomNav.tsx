@@ -1,7 +1,7 @@
-import { Home, MapPin, Wallet, CheckSquare, MessageCircle } from "lucide-react";
+import { Home, MapPin, Wallet, CheckSquare, MessageCircle, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabType = "home" | "posting" | "allowance" | "clearance" | "forum";
+type TabType = "home" | "posting" | "allowance" | "clearance" | "forum" | "profile";
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -9,11 +9,12 @@ interface BottomNavProps {
 }
 
 const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
-  { id: "home", label: "Home", icon: <Home size={22} /> },
-  { id: "posting", label: "Posting", icon: <MapPin size={22} /> },
-  { id: "allowance", label: "Allawee", icon: <Wallet size={22} /> },
-  { id: "clearance", label: "Clearance", icon: <CheckSquare size={22} /> },
-  { id: "forum", label: "Forum", icon: <MessageCircle size={22} /> },
+  { id: "home", label: "Home", icon: <Home size={20} /> },
+  { id: "posting", label: "Posting", icon: <MapPin size={20} /> },
+  { id: "allowance", label: "Allawee", icon: <Wallet size={20} /> },
+  { id: "clearance", label: "Clearance", icon: <CheckSquare size={20} /> },
+  { id: "forum", label: "Forum", icon: <MessageCircle size={20} /> },
+  { id: "profile", label: "Profile", icon: <User size={20} /> },
 ];
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
