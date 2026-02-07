@@ -1,10 +1,24 @@
-import { Bell } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Settings, LogOut } from "lucide-react";
+import { NotificationsDropdown } from "@/components/notifications/NotificationsDropdown";
+import { LogoutDialog } from "@/components/auth/LogoutDialog";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export function Header() {
+  const { isAuthenticated, user } = useAuth();
+
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
       <div className="flex items-center justify-between px-4 py-3 max-w-lg mx-auto">
-        <div className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-sm">N</span>
           </div>
@@ -16,11 +30,56 @@ export function Header() {
               Survive service year
             </p>
           </div>
+        </Link>
+        
+        <div className="flex items-center gap-1">
+          <NotificationsDropdown />
+          
+          {isAuthenticated ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="p-1 rounded-full hover:bg-muted transition-colors">
+                <Avatar className="w-8 h-8">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                    {user?.email?.charAt(0).toUpperCase() || "U"}
+                  </AvatarFallback>
+                </Avatar>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link to="/privacy" className="cursor-pointer">
+                    Privacy Policy
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/terms" className="cursor-pointer">
+                    Terms of Use
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/contact" className="cursor-pointer">
+                    Contact Support
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <LogoutDialog 
+                  trigger={
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <LogOut size={16} className="mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  }
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Link 
+              to="/login"
+              className="text-sm font-medium text-primary hover:underline px-3 py-1.5"
+            >
+              Login
+            </Link>
+          )}
         </div>
-        <button className="relative p-2 rounded-full hover:bg-muted transition-colors">
-          <Bell size={20} className="text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger rounded-full" />
-        </button>
       </div>
     </header>
   );
