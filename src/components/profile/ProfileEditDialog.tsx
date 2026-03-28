@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useUser } from "@/contexts/UserContext";
+import { useActiveBatch, formatBatchLabel } from "@/hooks/useActiveBatch";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +21,18 @@ const nigerianStates = [
   "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau",
   "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara"
 ];
-const batches = ["2023 Batch A", "2023 Batch B", "2023 Batch C", "2024 Batch A", "2024 Batch B", "2024 Batch C"];
 const streams = ["Stream I", "Stream II"];
 
 export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps) {
   const { currentUser, updateProfile } = useUser();
+  const { activeBatch } = useActiveBatch();
+  const activeBatchLabel = formatBatchLabel(activeBatch);
+
+  const availableBatches = useMemo(
+    () => [...new Set([activeBatchLabel, currentUser?.batch].filter(Boolean))],
+    [activeBatchLabel, currentUser?.batch]
+  );
+
   const [formData, setFormData] = useState({
     username: "", bio: "", batch: "", stream: "", state: "", lga: "", ppa: "", reg_number: "",
     status: "serving" as "in-camp" | "serving" | "cleared",
@@ -35,8 +43,8 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
       setFormData({
         username: currentUser.username,
         bio: currentUser.bio,
-        batch: currentUser.batch,
-        stream: currentUser.stream,
+        batch: currentUser.batch || activeBatchLabel,
+        stream: currentUser.stream || activeBatch?.stream || "Stream I",
         state: currentUser.state,
         lga: currentUser.lga,
         ppa: currentUser.ppa,
@@ -44,7 +52,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
         status: currentUser.status,
       });
     }
-  }, [currentUser, open]);
+  }, [currentUser, open, activeBatchLabel, activeBatch?.stream]);
 
   const handleSave = async () => {
     await updateProfile(formData);
@@ -77,7 +85,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
               <Label>Batch</Label>
               <Select value={formData.batch} onValueChange={(v) => setFormData({ ...formData, batch: v })}>
                 <SelectTrigger><SelectValue placeholder="Select batch" /></SelectTrigger>
-                <SelectContent>{batches.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
+                <SelectContent>{availableBatches.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">

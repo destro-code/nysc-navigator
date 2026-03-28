@@ -77,6 +77,48 @@ export type Database = {
         }
         Relationships: []
       }
+      batches: {
+        Row: {
+          batch: string
+          camp_start_date: string | null
+          created_at: string
+          end_date: string | null
+          id: string
+          is_active: boolean
+          registration_open: boolean
+          start_date: string | null
+          stream: string
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          batch: string
+          camp_start_date?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          registration_open?: boolean
+          start_date?: string | null
+          stream: string
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          batch?: string
+          camp_start_date?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          registration_open?: boolean
+          start_date?: string | null
+          stream?: string
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
       clearance_progress: {
         Row: {
           completed: boolean
