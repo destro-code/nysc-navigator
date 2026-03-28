@@ -9,11 +9,13 @@ interface MonthData {
   amount: number;
 }
 
+const ALLOWANCE_AMOUNT = 77000;
+
 const monthsData: MonthData[] = [
-  { month: "November", status: "paid", amount: 33000 },
-  { month: "December", status: "paid", amount: 33000 },
-  { month: "January", status: "late", amount: 33000 },
-  { month: "February", status: "pending", amount: 33000 },
+  { month: "November", status: "paid", amount: ALLOWANCE_AMOUNT },
+  { month: "December", status: "paid", amount: ALLOWANCE_AMOUNT },
+  { month: "January", status: "late", amount: ALLOWANCE_AMOUNT },
+  { month: "February", status: "pending", amount: ALLOWANCE_AMOUNT },
 ];
 
 export function AllowanceTracker() {
