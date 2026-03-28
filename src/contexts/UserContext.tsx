@@ -1,215 +1,154 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface UserProfile {
   id: string;
+  user_id: string;
   username: string;
   batch: string;
   stream: string;
   state: string;
+  lga: string;
+  ppa: string;
   status: "in-camp" | "serving" | "cleared";
   bio: string;
-  posts: number;
-  followers: string[];
-  following: string[];
-  likedPosts: string[];
-  createdAt: string;
+  avatar_url: string;
+  reg_number: string;
+  follower_count: number;
+  following_count: number;
 }
 
 interface UserContextType {
   currentUser: UserProfile | null;
-  allUsers: UserProfile[];
-  setCurrentUser: (user: UserProfile) => void;
-  updateUser: (updates: Partial<UserProfile>) => void;
-  followUser: (userId: string) => void;
-  unfollowUser: (userId: string) => void;
+  isLoading: boolean;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  followUser: (userId: string) => Promise<void>;
+  unfollowUser: (userId: string) => Promise<void>;
   isFollowing: (userId: string) => boolean;
-  getUserById: (userId: string) => UserProfile | undefined;
-  likePost: (postId: string) => void;
-  unlikePost: (postId: string) => void;
-  hasLikedPost: (postId: string) => boolean;
+  followingIds: string[];
+  getProfileByUserId: (userId: string) => Promise<UserProfile | null>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-const CURRENT_USER_KEY = "nysc_current_user";
-const ALL_USERS_KEY = "nysc_all_users";
-
-// Mock users for demo
-const mockUsers: UserProfile[] = [
-  {
-    id: "user_1",
-    username: "Lagos Corper",
-    batch: "2024 Batch A",
-    stream: "Stream I",
-    state: "Lagos",
-    status: "serving",
-    bio: "Just trying to survive service year 💪",
-    posts: 5,
-    followers: ["user_3"],
-    following: ["user_2"],
-    likedPosts: [],
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "user_2",
-    username: "Helpful Senior",
-    batch: "2023 Batch C",
-    stream: "Stream II",
-    state: "Abuja",
-    status: "cleared",
-    bio: "POP certified! Ask me anything 🎓",
-    posts: 12,
-    followers: ["user_1", "user_3"],
-    following: [],
-    likedPosts: [],
-    createdAt: "2023-08-20",
-  },
-  {
-    id: "user_3",
-    username: "Frustrated Corper",
-    batch: "2024 Batch A",
-    stream: "Stream I",
-    state: "Kano",
-    status: "serving",
-    bio: "Where's my allawee?! 😤",
-    posts: 8,
-    followers: [],
-    following: ["user_1", "user_2"],
-    likedPosts: [],
-    createdAt: "2024-01-20",
-  },
-];
-
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUserState] = useState<UserProfile | null>(null);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const { user, isAuthenticated } = useAuth();
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [followingIds, setFollowingIds] = useState<string[]>([]);
 
-  // Load from localStorage on mount
+  // Fetch profile
   useEffect(() => {
-    const savedUser = localStorage.getItem(CURRENT_USER_KEY);
-    const savedAllUsers = localStorage.getItem(ALL_USERS_KEY);
-
-    if (savedAllUsers) {
-      setAllUsers(JSON.parse(savedAllUsers));
-    } else {
-      setAllUsers(mockUsers);
-      localStorage.setItem(ALL_USERS_KEY, JSON.stringify(mockUsers));
+    if (!user) {
+      setCurrentUser(null);
+      setFollowingIds([]);
+      setIsLoading(false);
+      return;
     }
 
-    if (savedUser) {
-      setCurrentUserState(JSON.parse(savedUser));
-    } else {
-      // Auto-create a default user for demo
-      const defaultUser: UserProfile = {
-        id: "current_user",
-        username: "You",
-        batch: "2024 Batch A",
-        stream: "Stream I",
-        state: "Lagos",
-        status: "serving",
-        bio: "My NYSC journey starts here!",
-        posts: 0,
-        followers: [],
-        following: [],
-        likedPosts: [],
-        createdAt: new Date().toISOString().split("T")[0],
-      };
-      setCurrentUserState(defaultUser);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(defaultUser));
-    }
-  }, []);
+    const fetchProfile = async () => {
+      setIsLoading(true);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-  const setCurrentUser = (user: UserProfile) => {
-    setCurrentUserState(user);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-  };
+      if (profile) {
+        // Get follower/following counts
+        const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+          supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
+          supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
+        ]);
 
-  const updateUser = (updates: Partial<UserProfile>) => {
-    if (!currentUser) return;
-    const updatedUser = { ...currentUser, ...updates };
-    setCurrentUser(updatedUser);
-  };
+        setCurrentUser({
+          ...profile,
+          status: profile.status as UserProfile["status"],
+          lga: profile.lga || "",
+          ppa: profile.ppa || "",
+          bio: profile.bio || "",
+          avatar_url: profile.avatar_url || "",
+          reg_number: profile.reg_number || "",
+          batch: profile.batch || "",
+          stream: profile.stream || "",
+          state: profile.state || "",
+          follower_count: followerCount || 0,
+          following_count: followingCount || 0,
+        });
+      }
 
-  const followUser = (userId: string) => {
-    if (!currentUser || userId === currentUser.id) return;
+      // Fetch following ids
+      const { data: follows } = await supabase
+        .from("follows")
+        .select("following_id")
+        .eq("follower_id", user.id);
 
-    // Update current user's following
-    const updatedCurrentUser = {
-      ...currentUser,
-      following: [...currentUser.following, userId],
+      setFollowingIds(follows?.map((f) => f.following_id) || []);
+      setIsLoading(false);
     };
-    setCurrentUser(updatedCurrentUser);
 
-    // Update target user's followers
-    setAllUsers((prev) => {
-      const updated = prev.map((u) =>
-        u.id === userId ? { ...u, followers: [...u.followers, currentUser.id] } : u
-      );
-      localStorage.setItem(ALL_USERS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-  };
+    fetchProfile();
+  }, [user]);
 
-  const unfollowUser = (userId: string) => {
-    if (!currentUser) return;
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("user_id", user.id);
 
-    // Update current user's following
-    const updatedCurrentUser = {
-      ...currentUser,
-      following: currentUser.following.filter((id) => id !== userId),
-    };
-    setCurrentUser(updatedCurrentUser);
-
-    // Update target user's followers
-    setAllUsers((prev) => {
-      const updated = prev.map((u) =>
-        u.id === userId ? { ...u, followers: u.followers.filter((id) => id !== currentUser.id) } : u
-      );
-      localStorage.setItem(ALL_USERS_KEY, JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const isFollowing = (userId: string) => {
-    return currentUser?.following.includes(userId) ?? false;
-  };
-
-  const getUserById = (userId: string) => {
-    if (currentUser?.id === userId) return currentUser;
-    return allUsers.find((u) => u.id === userId);
-  };
-
-  const likePost = (postId: string) => {
-    if (!currentUser) return;
-    if (!currentUser.likedPosts.includes(postId)) {
-      updateUser({ likedPosts: [...currentUser.likedPosts, postId] });
+    if (!error && currentUser) {
+      setCurrentUser({ ...currentUser, ...updates });
     }
   };
 
-  const unlikePost = (postId: string) => {
-    if (!currentUser) return;
-    updateUser({ likedPosts: currentUser.likedPosts.filter((id) => id !== postId) });
+  const followUser = async (userId: string) => {
+    if (!user) return;
+    const { error } = await supabase.from("follows").insert({ follower_id: user.id, following_id: userId });
+    if (!error) {
+      setFollowingIds((prev) => [...prev, userId]);
+    }
   };
 
-  const hasLikedPost = (postId: string) => {
-    return currentUser?.likedPosts.includes(postId) ?? false;
+  const unfollowUser = async (userId: string) => {
+    if (!user) return;
+    const { error } = await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", userId);
+    if (!error) {
+      setFollowingIds((prev) => prev.filter((id) => id !== userId));
+    }
+  };
+
+  const isFollowing = (userId: string) => followingIds.includes(userId);
+
+  const getProfileByUserId = async (userId: string): Promise<UserProfile | null> => {
+    const { data } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
+    if (!data) return null;
+    
+    const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+      supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", userId),
+      supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", userId),
+    ]);
+
+    return {
+      ...data,
+      status: data.status as UserProfile["status"],
+      lga: data.lga || "",
+      ppa: data.ppa || "",
+      bio: data.bio || "",
+      avatar_url: data.avatar_url || "",
+      reg_number: data.reg_number || "",
+      batch: data.batch || "",
+      stream: data.stream || "",
+      state: data.state || "",
+      follower_count: followerCount || 0,
+      following_count: followingCount || 0,
+    };
   };
 
   return (
     <UserContext.Provider
-      value={{
-        currentUser,
-        allUsers,
-        setCurrentUser,
-        updateUser,
-        followUser,
-        unfollowUser,
-        isFollowing,
-        getUserById,
-        likePost,
-        unlikePost,
-        hasLikedPost,
-      }}
+      value={{ currentUser, isLoading, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId }}
     >
       {children}
     </UserContext.Provider>
@@ -218,8 +157,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
 export function useUser() {
   const context = useContext(UserContext);
-  if (context === undefined) {
-    throw new Error("useUser must be used within a UserProvider");
-  }
+  if (!context) throw new Error("useUser must be used within a UserProvider");
   return context;
 }

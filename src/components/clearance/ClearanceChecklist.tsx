@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ChecklistItem {
   id: string;
@@ -21,24 +23,20 @@ interface ChecklistSection {
 
 const initialInCampData: ChecklistSection[] = [
   {
-    id: "documents",
-    title: "📄 Mandatory Documents",
-    icon: <FileText size={18} />,
+    id: "documents", title: "📄 Mandatory Documents", icon: <FileText size={18} />,
     items: [
-      { id: "doc-1", label: "Call-Up Letter", description: "Original + photocopies for inspection and clearance", completed: false, priority: "high" },
+      { id: "doc-1", label: "Call-Up Letter", description: "Original + photocopies", completed: false, priority: "high" },
       { id: "doc-2", label: "Green Card Slip", description: "Original + copies", completed: false, priority: "high" },
       { id: "doc-3", label: "Statement of Result / Degree Certificate", description: "Original + copies", completed: false, priority: "high" },
       { id: "doc-4", label: "School ID Card", description: "Original + copies", completed: false, priority: "high" },
       { id: "doc-5", label: "Passport Photographs", description: "Many copies, white background", completed: false, priority: "high" },
       { id: "doc-6", label: "Medical Fitness Certificate", description: "Often compulsory for camp", completed: false, priority: "high" },
       { id: "doc-7", label: "NIN Print-Out or Valid ID", description: "National ID or NIN slip", completed: false, priority: "high" },
-      { id: "doc-8", label: "Clear Bag/Folder", description: "To keep all documents safe & organized", completed: false, priority: "medium" },
+      { id: "doc-8", label: "Clear Bag/Folder", description: "To keep documents safe", completed: false, priority: "medium" },
     ],
   },
   {
-    id: "essentials",
-    title: "👕 Essential Items for Camp",
-    icon: <Briefcase size={18} />,
+    id: "essentials", title: "👕 Essential Items for Camp", icon: <Briefcase size={18} />,
     items: [
       { id: "ess-1", label: "Extra White T-shirts & Shorts", description: "NYSC gives some but bring extra", completed: false, priority: "medium" },
       { id: "ess-2", label: "White Sneakers & Socks", description: "For parades & drills", completed: false, priority: "high" },
@@ -50,96 +48,121 @@ const initialInCampData: ChecklistSection[] = [
     ],
   },
   {
-    id: "registration",
-    title: "🧑‍💼 Arrival & Registration",
-    icon: <Calendar size={18} />,
+    id: "registration", title: "🧑‍💼 Arrival & Registration", icon: <Calendar size={18} />,
     items: [
       { id: "reg-1", label: "Gate Check", description: "Present documents at gate check", completed: false, priority: "high" },
       { id: "reg-2", label: "Accommodation Assignment", description: "Assigned room & mattress", completed: false, priority: "high" },
       { id: "reg-3", label: "Document Verification", description: "Verification of academic & ID documents", completed: false, priority: "high" },
       { id: "reg-4", label: "Biometric Capture", description: "Thumbprint biometric capture", completed: false, priority: "high" },
       { id: "reg-5", label: "Platoon & Meal Ticket", description: "Platoon assignment & meal ticket issued", completed: false, priority: "high" },
-      { id: "reg-6", label: "NYSC Kit Collection", description: "Pick up uniforms (cap, khaki, boots, etc.)", completed: false, priority: "high" },
+      { id: "reg-6", label: "NYSC Kit Collection", description: "Pick up uniforms", completed: false, priority: "high" },
     ],
   },
 ];
 
 const initialOutCampData: ChecklistSection[] = [
   {
-    id: "deployment",
-    title: "🧑‍💻 Deployment & Reporting",
-    icon: <Briefcase size={18} />,
+    id: "deployment", title: "🧑‍💻 Deployment & Reporting", icon: <Briefcase size={18} />,
     items: [
       { id: "dep-1", label: "Report to LG Secretariat", description: "Report with your posting letter", completed: false, priority: "high" },
       { id: "dep-2", label: "Submit Posting Letter", description: "Get PPA deployment details", completed: false, priority: "high" },
-      { id: "dep-3", label: "Report to PPA", description: "Report physically at your Primary Place of Assignment", completed: false, priority: "high" },
+      { id: "dep-3", label: "Report to PPA", description: "Report physically at your PPA", completed: false, priority: "high" },
     ],
   },
   {
-    id: "monthly",
-    title: "🪪 Monthly Clearance",
-    icon: <Calendar size={18} />,
+    id: "monthly", title: "🪪 Monthly Clearance", icon: <Calendar size={18} />,
     items: [
       { id: "mon-1", label: "Monthly Clearance Slip", description: "Signed by PPA supervisor", completed: false, priority: "high" },
       { id: "mon-2", label: "CDS Participation", description: "Attendance signed by CDS leader", completed: false, priority: "high" },
       { id: "mon-3", label: "NYSC ID Card", description: "Presented to LG clearance officers", completed: false, priority: "high" },
-      { id: "mon-4", label: "Biometric Sign-in", description: "Attendance recorded by LG Clearance Inspector", completed: false, priority: "high" },
+      { id: "mon-4", label: "Biometric Sign-in", description: "Attendance recorded by LG Inspector", completed: false, priority: "high" },
     ],
   },
   {
-    id: "pop",
-    title: "🏁 End of Service (POP)",
-    icon: <GraduationCap size={18} />,
+    id: "pop", title: "🏁 End of Service (POP)", icon: <GraduationCap size={18} />,
     items: [
       { id: "pop-1", label: "Monthly Clearance Slips", description: "All slips completed and verified", completed: false, priority: "high" },
-      { id: "pop-2", label: "Final CDS Attendance", description: "Final confirmation of CDS attendance", completed: false, priority: "high" },
+      { id: "pop-2", label: "Final CDS Attendance", description: "Final confirmation", completed: false, priority: "high" },
       { id: "pop-3", label: "Final PPA Clearance Letter", description: "Clearance letter from your PPA", completed: false, priority: "high" },
-      { id: "pop-4", label: "Certificate of National Service", description: "Collect your CNS / POP certificate", completed: false, priority: "high" },
+      { id: "pop-4", label: "Certificate of National Service", description: "Collect your CNS", completed: false, priority: "high" },
     ],
   },
 ];
 
 export function ClearanceChecklist() {
+  const { user } = useAuth();
   const [inCampData, setInCampData] = useState<ChecklistSection[]>(initialInCampData);
   const [outCampData, setOutCampData] = useState<ChecklistSection[]>(initialOutCampData);
   const [activeTab, setActiveTab] = useState("incamp");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const toggleItem = (sectionId: string, itemId: string, isInCamp: boolean) => {
+  useEffect(() => {
+    if (!user) return;
+    const loadProgress = async () => {
+      setIsLoading(true);
+      const { data } = await supabase.from("clearance_progress").select("*").eq("user_id", user.id);
+      if (data) {
+        const completedMap = new Map(data.map((d) => [d.item_id, d.completed]));
+        setInCampData((prev) => prev.map((section) => ({
+          ...section,
+          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
+        })));
+        setOutCampData((prev) => prev.map((section) => ({
+          ...section,
+          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
+        })));
+      }
+      setIsLoading(false);
+    };
+    loadProgress();
+  }, [user]);
+
+  const toggleItem = async (sectionId: string, itemId: string, isInCamp: boolean) => {
+    if (!user) return;
     const setter = isInCamp ? setInCampData : setOutCampData;
+    const tab = isInCamp ? "incamp" : "outcamp";
+    let newCompleted = false;
+
     setter((prev) =>
       prev.map((section) =>
         section.id === sectionId
-          ? {
-              ...section,
-              items: section.items.map((item) =>
-                item.id === itemId ? { ...item, completed: !item.completed } : item
-              ),
-            }
+          ? { ...section, items: section.items.map((item) => {
+              if (item.id === itemId) { newCompleted = !item.completed; return { ...item, completed: newCompleted }; }
+              return item;
+            }) }
           : section
       )
     );
+
+    await supabase.from("clearance_progress").upsert({
+      user_id: user.id,
+      item_id: itemId,
+      section_id: sectionId,
+      tab,
+      completed: !newCompleted ? false : true,
+      completed_at: !newCompleted ? null : new Date().toISOString(),
+    }, { onConflict: "user_id,item_id" });
   };
 
   const calculateProgress = (sections: ChecklistSection[]) => {
     const allItems = sections.flatMap((s) => s.items);
     const completed = allItems.filter((item) => item.completed).length;
-    return { completed, total: allItems.length, percentage: (completed / allItems.length) * 100 };
+    return { completed, total: allItems.length, percentage: allItems.length > 0 ? (completed / allItems.length) * 100 : 0 };
   };
 
-  const inCampProgress = calculateProgress(inCampData);
-  const outCampProgress = calculateProgress(outCampData);
-  const currentProgress = activeTab === "incamp" ? inCampProgress : outCampProgress;
+  const currentProgress = activeTab === "incamp" ? calculateProgress(inCampData) : calculateProgress(outCampData);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case "high":
-        return "bg-danger/10 text-danger";
-      case "medium":
-        return "bg-warning/10 text-warning";
-      default:
-        return "bg-muted text-muted-foreground";
+      case "high": return "bg-danger/10 text-danger";
+      case "medium": return "bg-warning/10 text-warning";
+      default: return "bg-muted text-muted-foreground";
     }
   };
+
+  if (isLoading) {
+    return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  }
 
   const renderSection = (section: ChecklistSection, isInCamp: boolean) => (
     <div key={section.id} className="mb-6">
@@ -149,41 +172,16 @@ export function ClearanceChecklist() {
       </div>
       <div className="space-y-2">
         {section.items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => toggleItem(section.id, item.id, isInCamp)}
-            className={`w-full p-3 rounded-xl border text-left transition-all duration-200 ${
-              item.completed
-                ? "bg-success/5 border-success/20"
-                : "bg-card border-border hover:border-primary/30"
-            }`}
-          >
+          <button key={item.id} onClick={() => toggleItem(section.id, item.id, isInCamp)}
+            className={`w-full p-3 rounded-xl border text-left transition-all duration-200 ${item.completed ? "bg-success/5 border-success/20" : "bg-card border-border hover:border-primary/30"}`}>
             <div className="flex items-start gap-3">
-              <div
-                className={`mt-0.5 ${
-                  item.completed ? "text-success" : "text-muted-foreground"
-                }`}
-              >
+              <div className={`mt-0.5 ${item.completed ? "text-success" : "text-muted-foreground"}`}>
                 {item.completed ? <CheckSquare size={20} /> : <Square size={20} />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                  <p
-                    className={`font-medium text-sm ${
-                      item.completed ? "text-success line-through" : "text-foreground"
-                    }`}
-                  >
-                    {item.label}
-                  </p>
-                  {!item.completed && (
-                    <span
-                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getPriorityColor(
-                        item.priority
-                      )}`}
-                    >
-                      {item.priority}
-                    </span>
-                  )}
+                  <p className={`font-medium text-sm ${item.completed ? "text-success line-through" : "text-foreground"}`}>{item.label}</p>
+                  {!item.completed && <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getPriorityColor(item.priority)}`}>{item.priority}</span>}
                 </div>
                 <p className="text-xs text-muted-foreground">{item.description}</p>
               </div>
@@ -199,24 +197,15 @@ export function ClearanceChecklist() {
       <h2 className="text-2xl font-bold text-foreground mb-2">Clearance Checklist</h2>
       <p className="text-muted-foreground mb-6">Track your NYSC clearance requirements</p>
 
-      {/* Progress Card */}
       <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-soft">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">
-              {currentProgress.percentage === 100 ? (
-                <Trophy size={24} className="text-primary" />
-              ) : (
-                <CheckSquare size={24} className="text-primary" />
-              )}
+              {currentProgress.percentage === 100 ? <Trophy size={24} className="text-primary" /> : <CheckSquare size={24} className="text-primary" />}
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">
-                {activeTab === "incamp" ? "In-Camp" : "Out-Camp"} Progress
-              </p>
-              <p className="text-2xl font-bold text-foreground">
-                {Math.round(currentProgress.percentage)}%
-              </p>
+              <p className="text-sm text-muted-foreground">{activeTab === "incamp" ? "In-Camp" : "Out-Camp"} Progress</p>
+              <p className="text-2xl font-bold text-foreground">{Math.round(currentProgress.percentage)}%</p>
             </div>
           </div>
           <div className="text-right">
@@ -227,37 +216,21 @@ export function ClearanceChecklist() {
         <Progress value={currentProgress.percentage} className="h-2" />
         {currentProgress.percentage < 100 && (
           <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
-            <AlertCircle size={12} />
-            {currentProgress.total - currentProgress.completed} items remaining
+            <AlertCircle size={12} /> {currentProgress.total - currentProgress.completed} items remaining
           </p>
         )}
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
         <TabsList className="grid w-full grid-cols-2 mb-4">
-          <TabsTrigger value="incamp" className="text-sm">
-            ✅ In-Camp
-          </TabsTrigger>
-          <TabsTrigger value="outcamp" className="text-sm">
-            📌 Out-Camp
-          </TabsTrigger>
+          <TabsTrigger value="incamp" className="text-sm">✅ In-Camp</TabsTrigger>
+          <TabsTrigger value="outcamp" className="text-sm">📌 Out-Camp</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="incamp" className="mt-0">
-          {inCampData.map((section) => renderSection(section, true))}
-        </TabsContent>
-
-        <TabsContent value="outcamp" className="mt-0">
-          {outCampData.map((section) => renderSection(section, false))}
-        </TabsContent>
+        <TabsContent value="incamp" className="mt-0">{inCampData.map((s) => renderSection(s, true))}</TabsContent>
+        <TabsContent value="outcamp" className="mt-0">{outCampData.map((s) => renderSection(s, false))}</TabsContent>
       </Tabs>
 
-      {/* Export Button */}
-      <Button variant="outline" className="w-full" size="lg">
-        <Download size={18} className="mr-2" />
-        Export as PDF
-      </Button>
+      <Button variant="outline" className="w-full" size="lg"><Download size={18} className="mr-2" /> Export as PDF</Button>
     </div>
   );
 }

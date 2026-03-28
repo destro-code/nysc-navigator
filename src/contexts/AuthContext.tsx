@@ -1,151 +1,108 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import type { User, Session } from "@supabase/supabase-js";
 
 export interface AuthUser {
   id: string;
   email: string;
-  isAdmin: boolean;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_KEY = "nysc_auth_user";
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const checkAdminRole = async (userId: string) => {
+    const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    setIsAdmin(!!data);
+  };
+
+  const mapUser = (supaUser: User): AuthUser => ({
+    id: supaUser.id,
+    email: supaUser.email || "",
+  });
 
   useEffect(() => {
-    const savedUser = localStorage.getItem(AUTH_KEY);
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(mapUser(session.user));
+          // Use setTimeout to avoid Supabase auth deadlock
+          setTimeout(() => checkAdminRole(session.user.id), 0);
+        } else {
+          setUser(null);
+          setIsAdmin(false);
+        }
+        setIsLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(mapUser(session.user));
+        checkAdminRole(session.user.id);
+      }
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
+  const login = async (email: string, password: string) => {
+    if (!email || !password) return { success: false, error: "Please enter both email and password" };
     
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // Validation
-    if (!email || !password) {
-      setIsLoading(false);
-      return { success: false, error: "Please enter both email and password" };
-    }
-    
-    if (!email.includes("@")) {
-      setIsLoading(false);
-      return { success: false, error: "Please enter a valid email address" };
-    }
-    
-    if (password.length < 6) {
-      setIsLoading(false);
-      return { success: false, error: "Password must be at least 6 characters" };
-    }
-    
-    // Mock login - in production would hit backend
-    const authUser: AuthUser = {
-      id: "current_user",
-      email,
-      isAdmin: email.includes("admin"),
-    };
-    
-    setUser(authUser);
-    localStorage.setItem(AUTH_KEY, JSON.stringify(authUser));
-    setIsLoading(false);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
-  const signup = async (email: string, password: string, confirmPassword: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    if (!email || !password || !confirmPassword) {
-      setIsLoading(false);
-      return { success: false, error: "Please fill in all fields" };
-    }
-    
-    if (!email.includes("@")) {
-      setIsLoading(false);
-      return { success: false, error: "Please enter a valid email address" };
-    }
-    
-    if (password.length < 6) {
-      setIsLoading(false);
-      return { success: false, error: "Password must be at least 6 characters" };
-    }
-    
-    if (password !== confirmPassword) {
-      setIsLoading(false);
-      return { success: false, error: "Passwords do not match" };
-    }
-    
-    const authUser: AuthUser = {
-      id: "current_user",
-      email,
-      isAdmin: false,
-    };
-    
-    setUser(authUser);
-    localStorage.setItem(AUTH_KEY, JSON.stringify(authUser));
-    setIsLoading(false);
+  const signup = async (email: string, password: string, confirmPassword: string) => {
+    if (!email || !password || !confirmPassword) return { success: false, error: "Please fill in all fields" };
+    if (password !== confirmPassword) return { success: false, error: "Passwords do not match" };
+    if (password.length < 6) return { success: false, error: "Password must be at least 6 characters" };
+
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(AUTH_KEY);
+  const logout = async () => {
+    await supabase.auth.signOut();
   };
 
-  const forgotPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    if (!email || !email.includes("@")) {
-      return { success: false, error: "Please enter a valid email address" };
-    }
-    
+  const forgotPassword = async (email: string) => {
+    if (!email) return { success: false, error: "Please enter your email" };
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
-  const resetPassword = async (token: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    if (!token) {
-      return { success: false, error: "Invalid reset token" };
-    }
-    
-    if (newPassword.length < 6) {
-      return { success: false, error: "Password must be at least 6 characters" };
-    }
-    
+  const resetPassword = async (_token: string, newPassword: string) => {
+    if (newPassword.length < 6) return { success: false, error: "Password must be at least 6 characters" };
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        signup,
-        logout,
-        forgotPassword,
-        resetPassword,
-      }}
+      value={{ user, isLoading, isAuthenticated: !!user, isAdmin, login, signup, logout, forgotPassword, resetPassword }}
     >
       {children}
     </AuthContext.Provider>
@@ -154,8 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 }
