@@ -1,19 +1,22 @@
 import { MapPin, Wallet, CheckSquare, MessageCircle, Sparkles } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { TabType } from "../layout/BottomNav";
+import { useActiveBatch } from "@/hooks/useActiveBatch";
 
 interface HomePageProps {
   onNavigate: (tab: TabType) => void;
 }
 
 export function HomePage({ onNavigate }: HomePageProps) {
+  const { activeBatchLabel } = useActiveBatch();
+
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
       {/* Hero Section */}
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-2">
           <Sparkles size={16} className="text-warning" />
-          <span className="text-xs font-medium text-warning">2024 Batch C</span>
+          <span className="text-xs font-medium text-warning">{activeBatchLabel}</span>
         </div>
         <h2 className="text-3xl font-bold text-foreground leading-tight mb-2">
           Survive NYSC.
