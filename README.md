@@ -71,3 +71,12 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Backend architecture baseline
+
+The repository now includes backend planning artifacts to guide API-first implementation:
+
+- Backend stack + boundaries: `docs/architecture.md`
+- OpenAPI contract: `docs/api/openapi.yaml`
+- ADRs for key decisions: `docs/adr/`
+- Shared request/response models package: `packages/types`
