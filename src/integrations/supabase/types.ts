@@ -14,16 +14,383 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      allowance_records: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          month: string
+          notes: string | null
+          status: Database["public"]["Enums"]["allowance_status"]
+          updated_at: string
+          user_id: string
+          year: number
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          month: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["allowance_status"]
+          updated_at?: string
+          user_id: string
+          year?: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          month?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["allowance_status"]
+          updated_at?: string
+          user_id?: string
+          year?: number
+        }
+        Relationships: []
+      }
+      announcements: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          title?: string
+        }
+        Relationships: []
+      }
+      clearance_progress: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          created_at: string
+          id: string
+          item_id: string
+          notes: string | null
+          section_id: string
+          tab: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          item_id: string
+          notes?: string | null
+          section_id: string
+          tab: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          notes?: string | null
+          section_id?: string
+          tab?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      forum_posts: {
+        Row: {
+          comments_count: number
+          content: string
+          created_at: string
+          downvotes: number
+          flair: Database["public"]["Enums"]["post_flair"]
+          id: string
+          is_deleted: boolean
+          updated_at: string
+          upvotes: number
+          user_id: string
+        }
+        Insert: {
+          comments_count?: number
+          content: string
+          created_at?: string
+          downvotes?: number
+          flair?: Database["public"]["Enums"]["post_flair"]
+          id?: string
+          is_deleted?: boolean
+          updated_at?: string
+          upvotes?: number
+          user_id: string
+        }
+        Update: {
+          comments_count?: number
+          content?: string
+          created_at?: string
+          downvotes?: number
+          flair?: Database["public"]["Enums"]["post_flair"]
+          id?: string
+          is_deleted?: boolean
+          updated_at?: string
+          upvotes?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          read: boolean
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean
+          title: string
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean
+          title?: string
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      post_reports: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          reason: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          reason: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          reason?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_reports_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "forum_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_votes: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+          vote_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+          vote_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+          vote_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_votes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "forum_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posting_progress: {
+        Row: {
+          created_at: string
+          date: string | null
+          id: string
+          notes: string | null
+          status: string
+          step_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          step_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          step_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          batch: string | null
+          bio: string | null
+          created_at: string
+          id: string
+          lga: string | null
+          ppa: string | null
+          reg_number: string | null
+          state: string | null
+          status: Database["public"]["Enums"]["nysc_status"] | null
+          stream: string | null
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          batch?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          lga?: string | null
+          ppa?: string | null
+          reg_number?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["nysc_status"] | null
+          stream?: string | null
+          updated_at?: string
+          user_id: string
+          username?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          batch?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          lga?: string | null
+          ppa?: string | null
+          reg_number?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["nysc_status"] | null
+          stream?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      allowance_status: "paid" | "pending" | "late"
+      app_role: "admin" | "moderator" | "user"
+      notification_type: "clearance" | "allowance" | "announcement" | "general"
+      nysc_status: "in-camp" | "serving" | "cleared"
+      post_flair: "cleared" | "stuck" | "question" | "info"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +517,12 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      allowance_status: ["paid", "pending", "late"],
+      app_role: ["admin", "moderator", "user"],
+      notification_type: ["clearance", "allowance", "announcement", "general"],
+      nysc_status: ["in-camp", "serving", "cleared"],
+      post_flair: ["cleared", "stuck", "question", "info"],
+    },
   },
 } as const
