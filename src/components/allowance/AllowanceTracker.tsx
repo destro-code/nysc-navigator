@@ -23,7 +23,7 @@ export function AllowanceTracker() {
   const [thisMonthPaid, setThisMonthPaid] = useState(false);
 
   const totalPaid = monthsData.filter(m => m.status === "paid").reduce((a, b) => a + b.amount, 0);
-  const totalExpected = monthsData.length * 33000;
+  const totalExpected = monthsData.length * ALLOWANCE_AMOUNT;
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
