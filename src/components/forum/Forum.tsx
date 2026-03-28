@@ -46,13 +46,22 @@ const getFlairStyle = (flair: ForumPost["flair"]) => {
 };
 
 const POSTS_PER_PAGE = 10;
+const FILTER_TO_FLAIR_MAP = {
+  All: "all",
+  Questions: "question",
+  Cleared: "cleared",
+  Stuck: "stuck",
+  Info: "info",
+} as const;
+
+type FilterLabel = keyof typeof FILTER_TO_FLAIR_MAP;
 
 export function Forum() {
   const { user } = useAuth();
   const { isFollowing, followingIds } = useUser();
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [userVotes, setUserVotes] = useState<Record<string, "up" | "down">>({});
-  const [activeFilter, setActiveFilter] = useState("All");
+  const [activeFilter, setActiveFilter] = useState<FilterLabel>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -137,8 +146,9 @@ export function Forum() {
   });
 
   const filteredPosts = sortedPosts.filter((post) => {
-    if (activeFilter === "All") return true;
-    return post.flair === activeFilter.toLowerCase();
+    const mappedFlair = FILTER_TO_FLAIR_MAP[activeFilter];
+    if (mappedFlair === "all") return true;
+    return post.flair === mappedFlair;
   });
 
   const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
@@ -177,7 +187,7 @@ export function Forum() {
       )}
 
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        {["All", "Questions", "Cleared", "Stuck", "Info"].map((filter) => (
+        {(Object.keys(FILTER_TO_FLAIR_MAP) as FilterLabel[]).map((filter) => (
           <button key={filter} onClick={() => { setActiveFilter(filter); setCurrentPage(1); }}
             className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${filter === activeFilter ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
           >{filter}</button>
