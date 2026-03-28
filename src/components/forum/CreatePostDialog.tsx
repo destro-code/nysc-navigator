@@ -1,22 +1,13 @@
 import { useState } from "react";
-import { Loader2, X } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CreatePostDialogProps {
   open: boolean;
@@ -35,96 +26,63 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
   const [content, setContent] = useState("");
   const [flair, setFlair] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
   const { toast } = useToast();
+  const { user } = useAuth();
   const maxLength = 500;
 
   const handleSubmit = async () => {
-    if (!content.trim() || !flair) return;
-    
+    if (!content.trim() || !flair || !user) return;
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast({
-      title: "Post created!",
-      description: "Your post has been published to the forum.",
+
+    const { error } = await supabase.from("forum_posts").insert({
+      user_id: user.id,
+      content: content.trim(),
+      flair: flair as "cleared" | "stuck" | "question" | "info",
     });
-    
-    setContent("");
-    setFlair("");
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
+    } else {
+      toast({ title: "Post created!", description: "Your post has been published to the forum." });
+      setContent("");
+      setFlair("");
+      onOpenChange(false);
+      onPostCreated?.();
+    }
     setIsSubmitting(false);
-    onOpenChange(false);
-    onPostCreated?.();
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create a Post</DialogTitle>
-        </DialogHeader>
-        
+        <DialogHeader><DialogTitle>Create a Post</DialogTitle></DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Flair</Label>
             <Select value={flair} onValueChange={setFlair}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a flair" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Select a flair" /></SelectTrigger>
               <SelectContent>
                 {flairOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    <div>
-                      <span className="font-medium">{option.label}</span>
-                      <span className="text-muted-foreground ml-2 text-xs">
-                        - {option.description}
-                      </span>
-                    </div>
+                    <span className="font-medium">{option.label}</span>
+                    <span className="text-muted-foreground ml-2 text-xs">- {option.description}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>What's on your mind?</Label>
-              <span className={`text-xs ${content.length > maxLength ? "text-danger" : "text-muted-foreground"}`}>
-                {content.length}/{maxLength}
-              </span>
+              <span className={`text-xs ${content.length > maxLength ? "text-danger" : "text-muted-foreground"}`}>{content.length}/{maxLength}</span>
             </div>
-            <Textarea
-              placeholder="Share your experience, ask a question, or rant about allawee..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="min-h-[120px] resize-none"
-              disabled={isSubmitting}
-            />
+            <Textarea placeholder="Share your experience, ask a question, or rant about allawee..." value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[120px] resize-none" disabled={isSubmitting} />
           </div>
         </div>
-
         <div className="flex justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="mr-2 animate-spin" />
-                Posting...
-              </>
-            ) : (
-              "Post"
-            )}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting}>
+            {isSubmitting ? <><Loader2 size={16} className="mr-2 animate-spin" />Posting...</> : "Post"}
           </Button>
         </div>
       </DialogContent>

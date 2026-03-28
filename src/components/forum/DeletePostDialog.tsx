@@ -1,15 +1,9 @@
 import { useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DeletePostDialogProps {
   open: boolean;
@@ -24,18 +18,15 @@ export function DeletePostDialog({ open, onOpenChange, postId, onDeleted }: Dele
 
   const handleDelete = async () => {
     setIsDeleting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    toast({
-      title: "Post deleted",
-      description: "Your post has been removed.",
-    });
-    
+    const { error } = await supabase.from("forum_posts").update({ is_deleted: true }).eq("id", postId);
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete post.", variant: "destructive" });
+    } else {
+      toast({ title: "Post deleted", description: "Your post has been removed." });
+      onDeleted?.();
+    }
     setIsDeleting(false);
     onOpenChange(false);
-    onDeleted?.();
   };
 
   return (
@@ -48,33 +39,14 @@ export function DeletePostDialog({ open, onOpenChange, postId, onDeleted }: Dele
             </div>
             <div>
               <AlertDialogTitle>Delete Post?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete your post.
-              </AlertDialogDescription>
+              <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
             </div>
           </div>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isDeleting}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <>
-                <Loader2 size={16} className="mr-2 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              "Delete"
-            )}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>Cancel</Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+            {isDeleting ? <><Loader2 size={16} className="mr-2 animate-spin" />Deleting...</> : "Delete"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

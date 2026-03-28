@@ -1,34 +1,103 @@
-import { useState } from "react";
-import { Wallet, CheckCircle, XCircle, TrendingUp, MessageSquare } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Wallet, CheckCircle, XCircle, TrendingUp, MessageSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-
-interface MonthData {
-  month: string;
-  status: "paid" | "pending" | "late";
-  amount: number;
-}
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const ALLOWANCE_AMOUNT = 77000;
 
-const monthsData: MonthData[] = [
-  { month: "November", status: "paid", amount: ALLOWANCE_AMOUNT },
-  { month: "December", status: "paid", amount: ALLOWANCE_AMOUNT },
-  { month: "January", status: "late", amount: ALLOWANCE_AMOUNT },
-  { month: "February", status: "pending", amount: ALLOWANCE_AMOUNT },
+const SERVICE_MONTHS = [
+  "November", "December", "January", "February", "March",
+  "April", "May", "June", "July", "August", "September", "October"
 ];
 
-export function AllowanceTracker() {
-  const [rant, setRant] = useState("");
-  const [thisMonthPaid, setThisMonthPaid] = useState(false);
+interface AllowanceRecord {
+  id?: string;
+  month: string;
+  year: number;
+  status: "paid" | "pending" | "late";
+  amount: number;
+  notes: string;
+}
 
-  const totalPaid = monthsData.filter(m => m.status === "paid").reduce((a, b) => a + b.amount, 0);
-  const totalExpected = monthsData.length * ALLOWANCE_AMOUNT;
+export function AllowanceTracker() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [records, setRecords] = useState<AllowanceRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [rant, setRant] = useState("");
+
+  const fetchRecords = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    const { data } = await supabase
+      .from("allowance_records")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("year", { ascending: true });
+
+    if (data && data.length > 0) {
+      setRecords(data.map((r) => ({
+        id: r.id,
+        month: r.month,
+        year: r.year,
+        status: r.status as AllowanceRecord["status"],
+        amount: r.amount,
+        notes: r.notes || "",
+      })));
+    } else {
+      // Initialize default records
+      const currentYear = new Date().getFullYear();
+      const defaults = SERVICE_MONTHS.slice(0, 4).map((month) => ({
+        month,
+        year: currentYear,
+        status: "pending" as const,
+        amount: ALLOWANCE_AMOUNT,
+        notes: "",
+      }));
+      setRecords(defaults);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => { fetchRecords(); }, [user]);
+
+  const toggleStatus = async (index: number) => {
+    if (!user) return;
+    const record = records[index];
+    const newStatus = record.status === "paid" ? "pending" : "paid";
+    const updated = [...records];
+    updated[index] = { ...record, status: newStatus };
+    setRecords(updated);
+
+    // Upsert to database
+    await supabase.from("allowance_records").upsert({
+      user_id: user.id,
+      month: record.month,
+      year: record.year,
+      amount: record.amount,
+      status: newStatus,
+      notes: record.notes,
+    }, { onConflict: "user_id,month,year" });
+  };
+
+  const totalPaid = records.filter((m) => m.status === "paid").reduce((a, b) => a + b.amount, 0);
+  const totalExpected = records.length * ALLOWANCE_AMOUNT;
+
+  if (isLoading) {
+    return (
+      <div className="px-4 py-6 pb-24 flex items-center justify-center">
+        <Loader2 className="animate-spin text-primary" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
       <h2 className="text-2xl font-bold text-foreground mb-2">Allawee Tracker</h2>
-      <p className="text-muted-foreground mb-6">Track your monthly allowance</p>
+      <p className="text-muted-foreground mb-6">Track your monthly ₦{ALLOWANCE_AMOUNT.toLocaleString()} allowance</p>
 
       {/* Summary Card */}
       <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-soft">
@@ -38,92 +107,44 @@ export function AllowanceTracker() {
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Total Received</p>
-            <p className="text-2xl font-bold text-foreground">
-              ₦{totalPaid.toLocaleString()}
-            </p>
+            <p className="text-2xl font-bold text-foreground">₦{totalPaid.toLocaleString()}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <TrendingUp size={16} className="text-success" />
           <span className="text-muted-foreground">
-            {Math.round((totalPaid / totalExpected) * 100)}% of expected allowance
+            {totalExpected > 0 ? Math.round((totalPaid / totalExpected) * 100) : 0}% of expected allowance
           </span>
-        </div>
-      </div>
-
-      {/* This Month Status */}
-      <div className="mb-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          This Month
-        </h3>
-        <div className="flex gap-3">
-          <Button
-            variant={thisMonthPaid ? "default" : "outline"}
-            className="flex-1"
-            size="lg"
-            onClick={() => setThisMonthPaid(true)}
-          >
-            <CheckCircle size={18} className="mr-2" />
-            Paid
-          </Button>
-          <Button
-            variant={!thisMonthPaid ? "destructive" : "outline"}
-            className="flex-1"
-            size="lg"
-            onClick={() => setThisMonthPaid(false)}
-          >
-            <XCircle size={18} className="mr-2" />
-            Not Paid
-          </Button>
         </div>
       </div>
 
       {/* Monthly History */}
       <div className="mb-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Payment History
-        </h3>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Payment History</h3>
         <div className="space-y-3">
-          {monthsData.map((month) => (
-            <div
-              key={month.month}
-              className="flex items-center justify-between p-4 bg-card border border-border rounded-xl"
+          {records.map((record, index) => (
+            <button
+              key={`${record.month}-${record.year}`}
+              onClick={() => toggleStatus(index)}
+              className={`w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl transition-all ${record.status === "paid" ? "border-success/30" : ""}`}
             >
               <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    month.status === "paid"
-                      ? "bg-success/10 text-success"
-                      : month.status === "late"
-                      ? "bg-warning/10 text-warning"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {month.status === "paid" ? (
-                    <CheckCircle size={20} />
-                  ) : (
-                    <XCircle size={20} />
-                  )}
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  record.status === "paid" ? "bg-success/10 text-success" : record.status === "late" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
+                }`}>
+                  {record.status === "paid" ? <CheckCircle size={20} /> : <XCircle size={20} />}
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">{month.month}</p>
-                  <p className="text-xs text-muted-foreground">
-                    ₦{month.amount.toLocaleString()}
-                  </p>
+                <div className="text-left">
+                  <p className="font-medium text-foreground">{record.month}</p>
+                  <p className="text-xs text-muted-foreground">₦{record.amount.toLocaleString()}</p>
                 </div>
               </div>
-              <span
-                className={`text-xs font-medium px-3 py-1 rounded-full ${
-                  month.status === "paid"
-                    ? "bg-success/10 text-success"
-                    : month.status === "late"
-                    ? "bg-warning/10 text-warning"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {month.status === "paid" ? "Received" : month.status === "late" ? "Late" : "Pending"}
+              <span className={`text-xs font-medium px-3 py-1 rounded-full ${
+                record.status === "paid" ? "bg-success/10 text-success" : record.status === "late" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
+              }`}>
+                {record.status === "paid" ? "Received" : record.status === "late" ? "Late" : "Pending"}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -131,18 +152,15 @@ export function AllowanceTracker() {
       {/* Rant Box */}
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-          <MessageSquare size={16} />
-          Rant Box
+          <MessageSquare size={16} /> Rant Box
         </h3>
-        <Textarea
-          placeholder="Oga NYSC, where is my money? 😤"
-          value={rant}
-          onChange={(e) => setRant(e.target.value)}
-          className="min-h-[100px] mb-3"
-        />
-        <Button variant="outline" className="w-full">
-          Post Anonymously
-        </Button>
+        <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" />
+        <Button variant="outline" className="w-full" onClick={async () => {
+          if (!rant.trim() || !user) return;
+          await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+          toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
+          setRant("");
+        }}>Post Anonymously</Button>
       </div>
     </div>
   );
