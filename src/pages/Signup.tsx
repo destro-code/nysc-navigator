@@ -34,19 +34,28 @@ export default function Signup() {
     setError("");
     setIsSubmitting(true);
 
-    const result = await signup(email.trim(), password, confirmPassword);
-    
-    if (result.success) {
-      toast({
-        title: "Account created!",
-        description: result.message ?? "Welcome to NYSC Buddy. Let's get you started.",
-      });
-      navigate(result.message ? "/login" : "/");
-    } else {
-      setError(result.error || "Signup failed");
+    try {
+      const result = await signup(email.trim(), password, confirmPassword);
+
+      if (result.success) {
+        toast({
+          title: "Account created!",
+          description: result.message ?? "Welcome to NYSC Buddy. Let's get you started.",
+        });
+        navigate(result.message ? "/login" : "/");
+      } else {
+        setError(result.error || "Signup failed");
+      }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
   };
 
   return (

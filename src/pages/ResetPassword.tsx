@@ -27,27 +27,36 @@ export default function ResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-    
+
     setIsSubmitting(true);
 
-    const result = await resetPassword(password);
-    
-    if (result.success) {
-      toast({
-        title: "Password reset!",
-        description: "Your password has been successfully reset.",
-      });
-      navigate("/login");
-    } else {
-      setError(result.error || "Failed to reset password");
+    try {
+      const result = await resetPassword(password);
+
+      if (result.success) {
+        toast({
+          title: "Password reset!",
+          description: "Your password has been successfully reset.",
+        });
+        navigate("/login");
+      } else {
+        setError(result.error || "Failed to reset password");
+      }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
   };
 
   return (
