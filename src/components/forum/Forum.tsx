@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreatePostDialog } from "./CreatePostDialog";
 import { DeletePostDialog } from "./DeletePostDialog";
+import { EditPostDialog } from "./EditPostDialog";
 import { ReportPostDialog } from "./ReportPostDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PostSkeleton } from "@/components/ui/loading-skeleton";
@@ -67,7 +68,9 @@ export function Forum() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [selectedPostContent, setSelectedPostContent] = useState("");
 
   const fetchPosts = async () => {
     setIsLoading(true);
@@ -235,7 +238,7 @@ export function Forum() {
                       <DropdownMenuContent align="end">
                         {isOwnPost ? (
                           <>
-                            <DropdownMenuItem><Edit size={14} className="mr-2" /> Edit Post</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setSelectedPostId(post.id); setSelectedPostContent(post.content); setEditDialogOpen(true); }}><Edit size={14} className="mr-2" /> Edit Post</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-danger focus:text-danger" onClick={() => { setSelectedPostId(post.id); setDeleteDialogOpen(true); }}>
                               <Trash2 size={14} className="mr-2" /> Delete Post
@@ -284,6 +287,13 @@ export function Forum() {
       <CreatePostDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} onPostCreated={fetchPosts} />
       <DeletePostDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} postId={selectedPostId || ""} onDeleted={fetchPosts} />
       <ReportPostDialog open={reportDialogOpen} onOpenChange={setReportDialogOpen} postId={selectedPostId || ""} />
+      <EditPostDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        postId={selectedPostId || ""}
+        initialContent={selectedPostContent}
+        onSaved={fetchPosts}
+      />
     </div>
   );
 }
