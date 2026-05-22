@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatCooldown, validatePostContent } from "@/lib/postValidation";
 import { Wallet, CheckCircle, XCircle, TrendingUp, MessageSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +29,7 @@ export function AllowanceTracker() {
   const [records, setRecords] = useState<AllowanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [rant, setRant] = useState("");
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   const fetchRecords = async () => {
     if (!user) return;
@@ -62,7 +64,19 @@ export function AllowanceTracker() {
     setIsLoading(false);
   };
 
-  useEffect(() => { fetchRecords(); }, [user]);
+  useEffect(() => { fetchRecords(); fetchCooldown(); }, [user]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCooldownSeconds((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const fetchCooldown = async () => {
+    if (!user) return;
+    const { data } = await supabase.rpc("get_forum_post_cooldown_seconds", { p_user_id: user.id });
+    setCooldownSeconds(Math.max(0, data || 0));
+  };
+
 
   const toggleStatus = async (index: number) => {
     if (!user) return;
@@ -156,11 +170,25 @@ export function AllowanceTracker() {
         </h3>
         <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" />
         <Button variant="outline" className="w-full" onClick={async () => {
-          if (!rant.trim() || !user) return;
-          await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+          if (!user || cooldownSeconds > 0) return;
+          const contentError = validatePostContent(rant);
+          if (contentError) {
+            toast({ title: "Invalid post", description: contentError, variant: "destructive" });
+            return;
+          }
+          const { error } = await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+          if (error) {
+            toast({ title: "Error", description: error.message || "Failed to post rant.", variant: "destructive" });
+            await fetchCooldown();
+            return;
+          }
           toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
           setRant("");
-        }}>Post Anonymously</Button>
+          await fetchCooldown();
+        }} disabled={cooldownSeconds > 0}>
+          {cooldownSeconds > 0 ? `Post available in ${formatCooldown(cooldownSeconds)}` : "Post Anonymously"}
+        </Button>
+        {cooldownSeconds > 0 ? <p className="text-xs text-muted-foreground mt-2">Forum cooldown is active to reduce spam.</p> : null}
       </div>
     </div>
   );

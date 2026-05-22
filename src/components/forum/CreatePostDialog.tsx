@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { formatCooldown, POST_MAX_LENGTH, validatePostContent } from "@/lib/postValidation";
 
 interface CreatePostDialogProps {
   open: boolean;
@@ -28,10 +29,21 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const maxLength = 500;
+  const maxLength = POST_MAX_LENGTH;
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  const fetchCooldown = async () => {
+    if (!user) return;
+    const { data } = await supabase.rpc("get_forum_post_cooldown_seconds", { p_user_id: user.id });
+    setCooldownSeconds(Math.max(0, data || 0));
+  };
 
   const handleSubmit = async () => {
-    if (!content.trim() || !flair || !user) return;
+    const contentError = validatePostContent(content);
+    if (contentError || !flair || !user || cooldownSeconds > 0) {
+      if (contentError) toast({ title: "Invalid post", description: contentError, variant: "destructive" });
+      return;
+    };
     setIsSubmitting(true);
 
     const { error } = await supabase.from("forum_posts").insert({
@@ -41,16 +53,25 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
     });
 
     if (error) {
-      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to create post.", variant: "destructive" });
+      await fetchCooldown();
     } else {
       toast({ title: "Post created!", description: "Your post has been published to the forum." });
       setContent("");
       setFlair("");
       onOpenChange(false);
       onPostCreated?.();
+      await fetchCooldown();
     }
     setIsSubmitting(false);
   };
+
+  useEffect(() => {
+    if (!open) return;
+    fetchCooldown();
+    const timer = setInterval(() => setCooldownSeconds((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [open, user]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -76,12 +97,13 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
               <Label>What's on your mind?</Label>
               <span className={`text-xs ${content.length > maxLength ? "text-danger" : "text-muted-foreground"}`}>{content.length}/{maxLength}</span>
             </div>
-            <Textarea placeholder="Share your experience, ask a question, or rant about allawee..." value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[120px] resize-none" disabled={isSubmitting} />
+            <Textarea placeholder="Share your experience, ask a question, or rant about allawee..." value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[120px] resize-none" disabled={isSubmitting || cooldownSeconds > 0} />
+            {cooldownSeconds > 0 ? <p className="text-xs text-muted-foreground">You can post again in {formatCooldown(cooldownSeconds)}.</p> : null}
           </div>
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting}>
+          <Button onClick={handleSubmit} disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting || cooldownSeconds > 0}>
             {isSubmitting ? <><Loader2 size={16} className="mr-2 animate-spin" />Posting...</> : "Post"}
           </Button>
         </div>
