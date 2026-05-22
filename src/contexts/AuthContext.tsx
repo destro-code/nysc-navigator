@@ -14,10 +14,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   error: string | null;
 }
 
@@ -83,20 +83,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (!email || !password) return { success: false, error: "Please enter both email and password" };
-    
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) return { success: false, error: "Please enter both email and password" };
+
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
     if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
   const signup = async (email: string, password: string, confirmPassword: string) => {
-    if (!email || !password || !confirmPassword) return { success: false, error: "Please fill in all fields" };
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password || !confirmPassword) return { success: false, error: "Please fill in all fields" };
     if (password !== confirmPassword) return { success: false, error: "Passwords do not match" };
     if (password.length < 6) return { success: false, error: "Password must be at least 6 characters" };
+    if (!/\d/.test(password) || !/[a-zA-Z]/.test(password)) {
+      return { success: false, error: "Password must contain at least one letter and one number" };
+    }
 
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    });
     if (error) return { success: false, error: error.message };
+    if (!data.session) {
+      return { success: true, message: "Please check your email to verify your account before logging in." };
+    }
     return { success: true };
   };
 
@@ -105,15 +119,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const forgotPassword = async (email: string) => {
-    if (!email) return { success: false, error: "Please enter your email" };
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return { success: false, error: "Please enter your email" };
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) return { success: false, error: error.message };
     return { success: true };
   };
 
-  const resetPassword = async (_token: string, newPassword: string) => {
+  const resetPassword = async (newPassword: string) => {
     if (newPassword.length < 6) return { success: false, error: "Password must be at least 6 characters" };
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { success: false, error: error.message };
