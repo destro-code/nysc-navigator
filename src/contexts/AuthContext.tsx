@@ -130,6 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (newPassword: string) => {
     if (newPassword.length < 6) return { success: false, error: "Password must be at least 6 characters" };
+    if (!/\d/.test(newPassword) || !/[a-zA-Z]/.test(newPassword)) {
+      return { success: false, error: "Password must contain at least one letter and one number" };
+    }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { success: false, error: error.message };
     return { success: true };
