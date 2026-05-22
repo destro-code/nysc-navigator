@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeApiError } from "@/lib/api-error";
+import { NetworkError } from "@/components/ui/network-error";
 
 interface ChecklistItem {
   id: string;
@@ -95,27 +97,37 @@ export function ClearanceChecklist() {
   const [outCampData, setOutCampData] = useState<ChecklistSection[]>(initialOutCampData);
   const [activeTab, setActiveTab] = useState("incamp");
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadProgress = useCallback(async () => {
+    if (!user) return;
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const { data, error } = await supabase.from("clearance_progress").select("*").eq("user_id", user.id);
+        if (error) throw error;
+        if (data) {
+          const completedMap = new Map(data.map((d) => [d.item_id, d.completed]));
+          setInCampData((prev) => prev.map((section) => ({
+            ...section,
+            items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
+          })));
+          setOutCampData((prev) => prev.map((section) => ({
+            ...section,
+            items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
+          })));
+        }
+      } catch (error) {
+        setErrorMessage(normalizeApiError(error, "Unable to load checklist progress right now."));
+      } finally {
+        setIsLoading(false);
+      }
+    }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    const loadProgress = async () => {
-      setIsLoading(true);
-      const { data } = await supabase.from("clearance_progress").select("*").eq("user_id", user.id);
-      if (data) {
-        const completedMap = new Map(data.map((d) => [d.item_id, d.completed]));
-        setInCampData((prev) => prev.map((section) => ({
-          ...section,
-          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
-        })));
-        setOutCampData((prev) => prev.map((section) => ({
-          ...section,
-          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
-        })));
-      }
-      setIsLoading(false);
-    };
     loadProgress();
-  }, [user]);
+  }, [loadProgress]);
 
   const toggleItem = async (sectionId: string, itemId: string, isInCamp: boolean) => {
     if (!user) return;
@@ -162,6 +174,9 @@ export function ClearanceChecklist() {
 
   if (isLoading) {
     return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  }
+  if (errorMessage) {
+    return <NetworkError message={errorMessage} onRetry={() => void loadProgress()} />;
   }
 
   const renderSection = (section: ChecklistSection, isInCamp: boolean) => (

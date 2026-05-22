@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { normalizeApiError } from "@/lib/api-error";
 
 export interface UserProfile {
   id: string;
@@ -28,6 +29,7 @@ interface UserContextType {
   isFollowing: (userId: string) => boolean;
   followingIds: string[];
   getProfileByUserId: (userId: string) => Promise<UserProfile | null>;
+  error: string | null;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -37,6 +39,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch profile
   useEffect(() => {
@@ -49,43 +52,51 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     const fetchProfile = async () => {
       setIsLoading(true);
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      setError(null);
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+        if (profileError) throw profileError;
 
-      if (profile) {
-        // Get follower/following counts
-        const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
-          supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
-          supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
-        ]);
+        if (profile) {
+          const [{ count: followerCount, error: followerCountError }, { count: followingCount, error: followingCountError }] = await Promise.all([
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
+          ]);
+          if (followerCountError) throw followerCountError;
+          if (followingCountError) throw followingCountError;
 
-        setCurrentUser({
-          ...profile,
-          status: profile.status as UserProfile["status"],
-          lga: profile.lga || "",
-          ppa: profile.ppa || "",
-          bio: profile.bio || "",
-          avatar_url: profile.avatar_url || "",
-          reg_number: profile.reg_number || "",
-          batch: profile.batch || "",
-          stream: profile.stream || "",
-          state: profile.state || "",
-          follower_count: followerCount || 0,
-          following_count: followingCount || 0,
-        });
+          setCurrentUser({
+            ...profile,
+            status: profile.status as UserProfile["status"],
+            lga: profile.lga || "",
+            ppa: profile.ppa || "",
+            bio: profile.bio || "",
+            avatar_url: profile.avatar_url || "",
+            reg_number: profile.reg_number || "",
+            batch: profile.batch || "",
+            stream: profile.stream || "",
+            state: profile.state || "",
+            follower_count: followerCount || 0,
+            following_count: followingCount || 0,
+          });
+        }
+
+        const { data: follows, error: followsError } = await supabase
+          .from("follows")
+          .select("following_id")
+          .eq("follower_id", user.id);
+        if (followsError) throw followsError;
+
+        setFollowingIds(follows?.map((f) => f.following_id) || []);
+      } catch (err) {
+        setError(normalizeApiError(err, "Unable to load profile data right now."));
+      } finally {
+        setIsLoading(false);
       }
-
-      // Fetch following ids
-      const { data: follows } = await supabase
-        .from("follows")
-        .select("following_id")
-        .eq("follower_id", user.id);
-
-      setFollowingIds(follows?.map((f) => f.following_id) || []);
-      setIsLoading(false);
     };
 
     fetchProfile();
@@ -148,7 +159,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   return (
     <UserContext.Provider
-      value={{ currentUser, isLoading, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId }}
+      value={{ currentUser, isLoading, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId, error }}
     >
       {children}
     </UserContext.Provider>

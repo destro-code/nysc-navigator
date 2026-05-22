@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import { normalizeApiError } from "@/lib/api-error";
 
 export interface AuthUser {
   id: string;
@@ -17,6 +18,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,9 +27,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const checkAdminRole = async (userId: string) => {
-    const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    if (error) throw error;
     setIsAdmin(!!data);
   };
 
@@ -39,24 +43,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session?.user) {
-          setUser(mapUser(session.user));
-          // Use setTimeout to avoid Supabase auth deadlock
-          setTimeout(() => checkAdminRole(session.user.id), 0);
-        } else {
-          setUser(null);
-          setIsAdmin(false);
+        setError(null);
+        try {
+          if (session?.user) {
+            setUser(mapUser(session.user));
+            setTimeout(() => {
+              void checkAdminRole(session.user.id).catch((err) => {
+                setError(normalizeApiError(err, "Unable to verify admin role."));
+              });
+            }, 0);
+          } else {
+            setUser(null);
+            setIsAdmin(false);
+          }
+        } catch (err) {
+          setError(normalizeApiError(err, "Unable to restore auth state."));
+        } finally {
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(mapUser(session.user));
-        checkAdminRole(session.user.id);
+    supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
+      setError(null);
+      try {
+        if (sessionError) throw sessionError;
+        if (session?.user) {
+          setUser(mapUser(session.user));
+          await checkAdminRole(session.user.id);
+        }
+      } catch (err) {
+        setError(normalizeApiError(err, "Unable to initialize auth session."));
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -102,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, isAdmin, login, signup, logout, forgotPassword, resetPassword }}
+      value={{ user, isLoading, isAuthenticated: !!user, isAdmin, login, signup, logout, forgotPassword, resetPassword, error }}
     >
       {children}
     </AuthContext.Provider>
