@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 
 interface ReportPostDialogProps {
   open: boolean;
@@ -42,8 +43,10 @@ export function ReportPostDialog({ open, onOpenChange, postId }: ReportPostDialo
     });
 
     if (error) {
+      trackEvent("forum.report", { postId, reason, success: false }, captureApiError(error, "post_reports.insert", "supabase"));
       toast({ title: "Error", description: error.message.includes("duplicate") ? "You've already reported this post." : "Failed to submit report.", variant: "destructive" });
     } else {
+      trackEvent("forum.report", { postId, reason, success: true });
       toast({ title: "Report submitted", description: "Thank you for helping keep our community safe." });
     }
     setReason("");

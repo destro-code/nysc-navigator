@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User, Session } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 
 export interface AuthUser {
   id: string;
@@ -66,7 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!email || !password) return { success: false, error: "Please enter both email and password" };
     
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      trackEvent("auth.failure", { flow: "login" }, captureApiError(error, "auth.signInWithPassword", "supabase"));
+      return { success: false, error: error.message };
+    }
+    trackEvent("auth.success", { flow: "login" });
     return { success: true };
   };
 

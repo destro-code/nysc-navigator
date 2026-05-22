@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 
 interface ChecklistItem {
   id: string;
@@ -134,7 +135,7 @@ export function ClearanceChecklist() {
       )
     );
 
-    await supabase.from("clearance_progress").upsert({
+    const { error } = await supabase.from("clearance_progress").upsert({
       user_id: user.id,
       item_id: itemId,
       section_id: sectionId,
@@ -142,6 +143,13 @@ export function ClearanceChecklist() {
       completed: !newCompleted ? false : true,
       completed_at: !newCompleted ? null : new Date().toISOString(),
     }, { onConflict: "user_id,item_id" });
+
+    if (error) {
+      trackEvent("clearance_item.toggle", { sectionId, itemId, tab, completed: newCompleted, success: false }, captureApiError(error, "clearance_progress.upsert", "supabase"));
+      return;
+    }
+
+    trackEvent("clearance_item.toggle", { sectionId, itemId, tab, completed: newCompleted, success: true });
   };
 
   const calculateProgress = (sections: ChecklistSection[]) => {

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 
 interface CreatePostDialogProps {
   open: boolean;
@@ -41,8 +42,10 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
     });
 
     if (error) {
+      trackEvent("forum.post", { source: "create_post_dialog", flair, success: false }, captureApiError(error, "forum_posts.insert", "supabase"));
       toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
     } else {
+      trackEvent("forum.post", { source: "create_post_dialog", flair, success: true });
       toast({ title: "Post created!", description: "Your post has been published to the forum." });
       setContent("");
       setFlair("");

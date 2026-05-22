@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { trackEvent } from "@/lib/telemetry";
 
 interface TimelineStep {
   id: string;
@@ -93,7 +94,10 @@ export function PostingTracker() {
           <Button 
             className="w-full mt-4" 
             size="lg"
-            onClick={() => setIsTracking(true)}
+            onClick={() => {
+              trackEvent("posting.save", { hasRegNumber: !!regNumber.trim(), stream: stream || null, state: state || null, success: true });
+              setIsTracking(true);
+            }}
           >
             <MapPin size={18} className="mr-2" />
             Start Tracking

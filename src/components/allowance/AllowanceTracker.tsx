@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 
 const ALLOWANCE_AMOUNT = 77000;
 
@@ -73,7 +74,7 @@ export function AllowanceTracker() {
     setRecords(updated);
 
     // Upsert to database
-    await supabase.from("allowance_records").upsert({
+    const { error } = await supabase.from("allowance_records").upsert({
       user_id: user.id,
       month: record.month,
       year: record.year,
@@ -81,6 +82,23 @@ export function AllowanceTracker() {
       status: newStatus,
       notes: record.notes,
     }, { onConflict: "user_id,month,year" });
+
+    if (error) {
+      trackEvent("allowance.toggle", {
+        month: record.month,
+        year: record.year,
+        status: newStatus,
+        success: false,
+      }, captureApiError(error, "allowance_records.upsert", "supabase"));
+      return;
+    }
+
+    trackEvent("allowance.toggle", {
+      month: record.month,
+      year: record.year,
+      status: newStatus,
+      success: true,
+    });
   };
 
   const totalPaid = records.filter((m) => m.status === "paid").reduce((a, b) => a + b.amount, 0);
@@ -157,7 +175,12 @@ export function AllowanceTracker() {
         <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" />
         <Button variant="outline" className="w-full" onClick={async () => {
           if (!rant.trim() || !user) return;
-          await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+          const { error } = await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+          if (error) {
+            trackEvent("forum.post", { source: "allowance_rant", flair: "stuck", success: false }, captureApiError(error, "forum_posts.insert", "supabase"));
+            return;
+          }
+          trackEvent("forum.post", { source: "allowance_rant", flair: "stuck", success: true });
           toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
           setRant("");
         }}>Post Anonymously</Button>

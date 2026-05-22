@@ -10,6 +10,7 @@ import { ReportPostDialog } from "./ReportPostDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PostSkeleton } from "@/components/ui/loading-skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { captureApiError, trackEvent } from "@/lib/telemetry";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -117,24 +118,44 @@ export function Forum() {
   const handleVote = async (postId: string, type: "up" | "down") => {
     if (!user) return;
     const currentVote = userVotes[postId];
+    let action: "create" | "update" | "remove" = "create";
 
     if (currentVote === type) {
+      action = "remove";
       // Remove vote
-      await supabase.from("post_votes").delete().eq("user_id", user.id).eq("post_id", postId);
+      const { error: deleteError } = await supabase.from("post_votes").delete().eq("user_id", user.id).eq("post_id", postId);
+      if (deleteError) {
+        trackEvent("forum.vote", { postId, voteType: type, action, success: false }, captureApiError(deleteError, "post_votes.delete", "supabase"));
+        return;
+      }
       setUserVotes((prev) => { const n = { ...prev }; delete n[postId]; return n; });
       // Update post counts
-      await supabase.from("forum_posts").update({
+      const { error: countError } = await supabase.from("forum_posts").update({
         [type === "up" ? "upvotes" : "downvotes"]: posts.find((p) => p.id === postId)?.[type === "up" ? "upvotes" : "downvotes"]! - 1,
       }).eq("id", postId);
+      if (countError) {
+        trackEvent("forum.vote", { postId, voteType: type, action: "remove", success: false }, captureApiError(countError, "forum_posts.update", "supabase"));
+        return;
+      }
     } else {
       if (currentVote) {
+        action = "update";
         // Change vote
-        await supabase.from("post_votes").update({ vote_type: type }).eq("user_id", user.id).eq("post_id", postId);
+        const { error: updateError } = await supabase.from("post_votes").update({ vote_type: type }).eq("user_id", user.id).eq("post_id", postId);
+        if (updateError) {
+          trackEvent("forum.vote", { postId, voteType: type, action, success: false }, captureApiError(updateError, "post_votes.update", "supabase"));
+          return;
+        }
       } else {
-        await supabase.from("post_votes").insert({ user_id: user.id, post_id: postId, vote_type: type });
+        const { error: insertError } = await supabase.from("post_votes").insert({ user_id: user.id, post_id: postId, vote_type: type });
+        if (insertError) {
+          trackEvent("forum.vote", { postId, voteType: type, action, success: false }, captureApiError(insertError, "post_votes.insert", "supabase"));
+          return;
+        }
       }
       setUserVotes((prev) => ({ ...prev, [postId]: type }));
     }
+    trackEvent("forum.vote", { postId, voteType: type, action, success: true });
     fetchPosts();
   };
 
