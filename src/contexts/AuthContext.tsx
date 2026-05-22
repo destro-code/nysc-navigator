@@ -8,6 +8,24 @@ export interface AuthUser {
   email: string;
 }
 
+const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_LETTER_REGEX = /[a-zA-Z]/;
+const PASSWORD_NUMBER_REGEX = /\d/;
+
+export const PASSWORD_REQUIREMENTS = [
+  { label: `At least ${PASSWORD_MIN_LENGTH} characters`, test: (password: string) => password.length >= PASSWORD_MIN_LENGTH },
+  { label: "Contains a number", test: (password: string) => PASSWORD_NUMBER_REGEX.test(password) },
+  { label: "Contains a letter", test: (password: string) => PASSWORD_LETTER_REGEX.test(password) },
+] as const;
+
+const validatePassword = (password: string): string | null => {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (!PASSWORD_NUMBER_REGEX.test(password) || !PASSWORD_LETTER_REGEX.test(password)) {
+    return "Password must contain at least one letter and one number";
+  }
+  return null;
+};
+
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
@@ -95,10 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !password || !confirmPassword) return { success: false, error: "Please fill in all fields" };
     if (password !== confirmPassword) return { success: false, error: "Passwords do not match" };
-    if (password.length < 6) return { success: false, error: "Password must be at least 6 characters" };
-    if (!/\d/.test(password) || !/[a-zA-Z]/.test(password)) {
-      return { success: false, error: "Password must contain at least one letter and one number" };
-    }
+    const passwordValidationError = validatePassword(password);
+    if (passwordValidationError) return { success: false, error: passwordValidationError };
 
     const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
     if (error) return { success: false, error: error.message };
@@ -123,7 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (newPassword: string) => {
-    if (newPassword.length < 6) return { success: false, error: "Password must be at least 6 characters" };
+    const passwordValidationError = validatePassword(newPassword);
+    if (passwordValidationError) return { success: false, error: passwordValidationError };
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { success: false, error: error.message };
     return { success: true };
