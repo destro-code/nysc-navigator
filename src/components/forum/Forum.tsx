@@ -10,6 +10,8 @@ import { ReportPostDialog } from "./ReportPostDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PostSkeleton } from "@/components/ui/loading-skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeApiError } from "@/lib/api-error";
+import { NetworkError } from "@/components/ui/network-error";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +65,7 @@ export function Forum() {
   const [userVotes, setUserVotes] = useState<Record<string, "up" | "down">>({});
   const [activeFilter, setActiveFilter] = useState<FilterLabel>("All");
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -71,45 +74,52 @@ export function Forum() {
 
   const fetchPosts = async () => {
     setIsLoading(true);
-    const { data: postsData } = await supabase
-      .from("forum_posts")
-      .select("*")
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false });
+    setErrorMessage(null);
+    try {
+      const { data: postsData, error: postsError } = await supabase
+        .from("forum_posts")
+        .select("*")
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false });
 
-    if (!postsData) { setIsLoading(false); return; }
+      if (postsError) throw postsError;
+      if (!postsData) return;
 
-    // Fetch author profiles
-    const userIds = [...new Set(postsData.map((p) => p.user_id))];
-    const { data: profiles } = await supabase.from("profiles").select("user_id, username, status").in("user_id", userIds);
-    const profileMap = new Map(profiles?.map((p) => [p.user_id, p]) || []);
+      const userIds = [...new Set(postsData.map((p) => p.user_id))];
+      const { data: profiles, error: profilesError } = await supabase.from("profiles").select("user_id, username, status").in("user_id", userIds);
+      if (profilesError) throw profilesError;
+      const profileMap = new Map(profiles?.map((p) => [p.user_id, p]) || []);
 
-    // Fetch user votes
-    if (user) {
-      const { data: votes } = await supabase.from("post_votes").select("post_id, vote_type").eq("user_id", user.id);
-      const voteMap: Record<string, "up" | "down"> = {};
-      votes?.forEach((v) => { voteMap[v.post_id] = v.vote_type as "up" | "down"; });
-      setUserVotes(voteMap);
+      if (user) {
+        const { data: votes, error: votesError } = await supabase.from("post_votes").select("post_id, vote_type").eq("user_id", user.id);
+        if (votesError) throw votesError;
+        const voteMap: Record<string, "up" | "down"> = {};
+        votes?.forEach((v) => { voteMap[v.post_id] = v.vote_type as "up" | "down"; });
+        setUserVotes(voteMap);
+      }
+
+      setPosts(
+        postsData.map((p) => {
+          const profile = profileMap.get(p.user_id);
+          return {
+            id: p.id,
+            content: p.content,
+            user_id: p.user_id,
+            author_username: profile?.username || "Corper",
+            author_status: profile?.status || "serving",
+            created_at: p.created_at,
+            upvotes: p.upvotes,
+            downvotes: p.downvotes,
+            comments_count: p.comments_count,
+            flair: p.flair as ForumPost["flair"],
+          };
+        })
+      );
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error, "Unable to load forum posts right now."));
+    } finally {
+      setIsLoading(false);
     }
-
-    setPosts(
-      postsData.map((p) => {
-        const profile = profileMap.get(p.user_id);
-        return {
-          id: p.id,
-          content: p.content,
-          user_id: p.user_id,
-          author_username: profile?.username || "Corper",
-          author_status: profile?.status || "serving",
-          created_at: p.created_at,
-          upvotes: p.upvotes,
-          downvotes: p.downvotes,
-          comments_count: p.comments_count,
-          flair: p.flair as ForumPost["flair"],
-        };
-      })
-    );
-    setIsLoading(false);
   };
 
   useEffect(() => { fetchPosts(); }, [user]);
@@ -196,6 +206,8 @@ export function Forum() {
 
       {isLoading ? (
         <div className="space-y-4">{[1, 2, 3].map((i) => <PostSkeleton key={i} />)}</div>
+      ) : errorMessage ? (
+        <NetworkError message={errorMessage} onRetry={fetchPosts} />
       ) : paginatedPosts.length === 0 ? (
         <EmptyState icon={<MessageCircle size={32} />} title="No posts yet"
           description={activeFilter === "All" ? "Be the first to start a conversation!" : `No ${activeFilter.toLowerCase()} posts yet.`}

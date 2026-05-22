@@ -5,6 +5,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeApiError } from "@/lib/api-error";
+import { NetworkError } from "@/components/ui/network-error";
 
 const ALLOWANCE_AMOUNT = 77000;
 
@@ -27,39 +29,48 @@ export function AllowanceTracker() {
   const { toast } = useToast();
   const [records, setRecords] = useState<AllowanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [rant, setRant] = useState("");
 
   const fetchRecords = async () => {
     if (!user) return;
     setIsLoading(true);
-    const { data } = await supabase
-      .from("allowance_records")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("year", { ascending: true });
+    setErrorMessage(null);
+    try {
+      const { data, error } = await supabase
+        .from("allowance_records")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("year", { ascending: true });
 
-    if (data && data.length > 0) {
-      setRecords(data.map((r) => ({
-        id: r.id,
-        month: r.month,
-        year: r.year,
-        status: r.status as AllowanceRecord["status"],
-        amount: r.amount,
-        notes: r.notes || "",
-      })));
-    } else {
-      // Initialize default records
-      const currentYear = new Date().getFullYear();
-      const defaults = SERVICE_MONTHS.slice(0, 4).map((month) => ({
-        month,
-        year: currentYear,
-        status: "pending" as const,
-        amount: ALLOWANCE_AMOUNT,
-        notes: "",
-      }));
-      setRecords(defaults);
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setRecords(data.map((r) => ({
+          id: r.id,
+          month: r.month,
+          year: r.year,
+          status: r.status as AllowanceRecord["status"],
+          amount: r.amount,
+          notes: r.notes || "",
+        })));
+      } else {
+        // Initialize default records
+        const currentYear = new Date().getFullYear();
+        const defaults = SERVICE_MONTHS.slice(0, 4).map((month) => ({
+          month,
+          year: currentYear,
+          status: "pending" as const,
+          amount: ALLOWANCE_AMOUNT,
+          notes: "",
+        }));
+        setRecords(defaults);
+      }
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error, "Unable to load allowance records right now."));
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => { fetchRecords(); }, [user]);
@@ -92,6 +103,9 @@ export function AllowanceTracker() {
         <Loader2 className="animate-spin text-primary" size={32} />
       </div>
     );
+  }
+  if (errorMessage) {
+    return <NetworkError message={errorMessage} onRetry={fetchRecords} />;
   }
 
   return (
