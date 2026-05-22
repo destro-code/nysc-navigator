@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChecklistItem {
   id: string;
@@ -95,6 +96,8 @@ export function ClearanceChecklist() {
   const [outCampData, setOutCampData] = useState<ChecklistSection[]>(initialOutCampData);
   const [activeTab, setActiveTab] = useState("incamp");
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
@@ -151,6 +154,87 @@ export function ClearanceChecklist() {
   };
 
   const currentProgress = activeTab === "incamp" ? calculateProgress(inCampData) : calculateProgress(outCampData);
+
+  const formatTimestamp = (value: Date) => new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
+
+  const getCompletionSummary = () => {
+    const inCampProgress = calculateProgress(inCampData);
+    const outCampProgress = calculateProgress(outCampData);
+    const combinedTotal = inCampProgress.total + outCampProgress.total;
+    const combinedCompleted = inCampProgress.completed + outCampProgress.completed;
+
+    return {
+      inCampProgress,
+      outCampProgress,
+      combinedCompleted,
+      combinedTotal,
+      combinedPercentage: combinedTotal > 0 ? Math.round((combinedCompleted / combinedTotal) * 100) : 0,
+    };
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const generatedAt = new Date();
+      const summary = getCompletionSummary();
+      const displayName = user?.user_metadata?.full_name || user?.email;
+
+      const reportHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Clearance Checklist Report</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 32px; color: #0f172a; }
+h1 { margin-bottom: 6px; }
+.muted { color: #475569; font-size: 14px; }
+.card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin: 16px 0; }
+.metrics { display: flex; gap: 20px; margin: 12px 0; }
+.metric b { font-size: 20px; display: block; }
+</style></head><body>
+<h1>NYSC Clearance Checklist Report</h1>
+${displayName ? `<p class="muted"><strong>User:</strong> ${displayName}</p>` : ""}
+<p class="muted"><strong>Generated:</strong> ${formatTimestamp(generatedAt)}</p>
+<div class="metrics">
+  <div class="metric"><b>${summary.combinedCompleted}/${summary.combinedTotal}</b><span>Total Completed</span></div>
+  <div class="metric"><b>${summary.combinedPercentage}%</b><span>Overall Progress</span></div>
+</div>
+<div class="card">
+  <h3>In-Camp Completion State</h3>
+  <p>${summary.inCampProgress.completed}/${summary.inCampProgress.total} items completed (${Math.round(summary.inCampProgress.percentage)}%)</p>
+</div>
+<div class="card">
+  <h3>Out-Camp Completion State</h3>
+  <p>${summary.outCampProgress.completed}/${summary.outCampProgress.total} items completed (${Math.round(summary.outCampProgress.percentage)}%)</p>
+</div>
+</body></html>`;
+
+      const printWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!printWindow) throw new Error("Could not open export window. Please allow pop-ups and try again.");
+
+      printWindow.document.open();
+      printWindow.document.write(reportHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+
+      toast({
+        title: "Export ready",
+        description: "Your clearance report has been prepared for PDF export.",
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unable to export checklist report.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -230,7 +314,10 @@ export function ClearanceChecklist() {
         <TabsContent value="outcamp" className="mt-0">{outCampData.map((s) => renderSection(s, false))}</TabsContent>
       </Tabs>
 
-      <Button variant="outline" className="w-full" size="lg"><Download size={18} className="mr-2" /> Export as PDF</Button>
+      <Button variant="outline" className="w-full" size="lg" onClick={handleExportPdf} disabled={isExporting}>
+        {isExporting ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Download size={18} className="mr-2" />}
+        {isExporting ? "Generating PDF..." : "Export as PDF"}
+      </Button>
     </div>
   );
 }
