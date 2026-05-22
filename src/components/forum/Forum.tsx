@@ -68,6 +68,7 @@ export function Forum() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [pendingVotes, setPendingVotes] = useState<Record<string, "up" | "down">>({});
 
   const fetchPosts = async () => {
     setIsLoading(true);
@@ -115,27 +116,35 @@ export function Forum() {
   useEffect(() => { fetchPosts(); }, [user]);
 
   const handleVote = async (postId: string, type: "up" | "down") => {
-    if (!user) return;
-    const currentVote = userVotes[postId];
+    if (!user || pendingVotes[postId]) return;
 
-    if (currentVote === type) {
-      // Remove vote
-      await supabase.from("post_votes").delete().eq("user_id", user.id).eq("post_id", postId);
-      setUserVotes((prev) => { const n = { ...prev }; delete n[postId]; return n; });
-      // Update post counts
-      await supabase.from("forum_posts").update({
-        [type === "up" ? "upvotes" : "downvotes"]: posts.find((p) => p.id === postId)?.[type === "up" ? "upvotes" : "downvotes"]! - 1,
-      }).eq("id", postId);
-    } else {
-      if (currentVote) {
-        // Change vote
-        await supabase.from("post_votes").update({ vote_type: type }).eq("user_id", user.id).eq("post_id", postId);
+    setPendingVotes((prev) => ({ ...prev, [postId]: type }));
+
+    const { data, error } = await supabase.rpc("transition_post_vote", {
+      p_post_id: postId,
+      p_vote_type: type,
+    });
+
+    setPendingVotes((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+
+    if (error || !data?.[0]) return;
+
+    const result = data[0] as { upvotes: number; downvotes: number; user_vote: "up" | "down" | null };
+
+    setPosts((prev) => prev.map((post) => post.id === postId ? { ...post, upvotes: result.upvotes, downvotes: result.downvotes } : post));
+    setUserVotes((prev) => {
+      const next = { ...prev };
+      if (result.user_vote) {
+        next[postId] = result.user_vote;
       } else {
-        await supabase.from("post_votes").insert({ user_id: user.id, post_id: postId, vote_type: type });
+        delete next[postId];
       }
-      setUserVotes((prev) => ({ ...prev, [postId]: type }));
-    }
-    fetchPosts();
+      return next;
+    });
   };
 
   // Sort: following first
@@ -255,11 +264,13 @@ export function Forum() {
 
                   <div className="flex items-center gap-4 pt-3 border-t border-border">
                     <button onClick={() => handleVote(post.id, "up")}
-                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "up" ? "text-success" : "text-muted-foreground hover:text-foreground"}`}>
+                      disabled={Boolean(pendingVotes[post.id])}
+                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "up" ? "text-success" : "text-muted-foreground hover:text-foreground"} ${pendingVotes[post.id] === "up" ? "opacity-70" : ""}`}>
                       <ThumbsUp size={16} /> <span>{post.upvotes}</span>
                     </button>
                     <button onClick={() => handleVote(post.id, "down")}
-                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "down" ? "text-danger" : "text-muted-foreground hover:text-foreground"}`}>
+                      disabled={Boolean(pendingVotes[post.id])}
+                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "down" ? "text-danger" : "text-muted-foreground hover:text-foreground"} ${pendingVotes[post.id] === "down" ? "opacity-70" : ""}`}>
                       <ThumbsDown size={16} /> <span>{post.downvotes}</span>
                     </button>
                     <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground ml-auto">
