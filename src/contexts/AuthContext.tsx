@@ -32,7 +32,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>;
+  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -117,10 +117,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (passwordValidationError) return { success: false, error: passwordValidationError };
 
     const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
-    if (error) return { success: false, error: error.message };
-    if (!data.session) {
-      return { success: true, message: "Please check your email to verify your account before logging in." };
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered")) {
+        return { success: false, error: "An account with this email already exists. Please log in instead." };
+      }
+      return { success: false, error: error.message };
     }
+
+    if (!data.session) {
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (loginError) {
+        const normalizedLoginError = loginError.message.toLowerCase();
+        if (normalizedLoginError.includes("email not confirmed")) {
+          return {
+            success: false,
+            error:
+              "Email confirmation is still enabled for this Supabase project. Disable it in Auth settings (Email provider) to allow instant login after signup.",
+          };
+        }
+
+        return { success: false, error: loginError.message };
+      }
+    }
+
     return { success: true };
   };
 
