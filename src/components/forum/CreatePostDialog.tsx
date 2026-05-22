@@ -34,22 +34,25 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
     if (!content.trim() || !flair || !user) return;
     setIsSubmitting(true);
 
-    const { error } = await supabase.from("forum_posts").insert({
-      user_id: user.id,
-      content: content.trim(),
-      flair: flair as "cleared" | "stuck" | "question" | "info",
-    });
+    try {
+      const { error } = await supabase.from("forum_posts").insert({
+        user_id: user.id,
+        content: content.trim(),
+        flair: flair as "cleared" | "stuck" | "question" | "info",
+      });
 
-    if (error) {
-      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
-    } else {
-      toast({ title: "Post created!", description: "Your post has been published to the forum." });
-      setContent("");
-      setFlair("");
-      onOpenChange(false);
-      onPostCreated?.();
+      if (error) {
+        toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
+      } else {
+        toast({ title: "Post created!", description: "Your post has been published to the forum." });
+        setContent("");
+        setFlair("");
+        onOpenChange(false);
+        onPostCreated?.();
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -59,7 +62,7 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Flair</Label>
-            <Select value={flair} onValueChange={setFlair}>
+            <Select value={flair} onValueChange={setFlair} disabled={isSubmitting}>
               <SelectTrigger><SelectValue placeholder="Select a flair" /></SelectTrigger>
               <SelectContent>
                 {flairOptions.map((option) => (

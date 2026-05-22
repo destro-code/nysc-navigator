@@ -35,21 +35,24 @@ export function ReportPostDialog({ open, onOpenChange, postId }: ReportPostDialo
     setIsSubmitting(true);
 
     const reportReason = reason === "other" ? details || reason : reason;
-    const { error } = await supabase.from("post_reports").insert({
-      user_id: user.id,
-      post_id: postId,
-      reason: reportReason,
-    });
+    try {
+      const { error } = await supabase.from("post_reports").insert({
+        user_id: user.id,
+        post_id: postId,
+        reason: reportReason,
+      });
 
-    if (error) {
-      toast({ title: "Error", description: error.message.includes("duplicate") ? "You've already reported this post." : "Failed to submit report.", variant: "destructive" });
-    } else {
-      toast({ title: "Report submitted", description: "Thank you for helping keep our community safe." });
+      if (error) {
+        toast({ title: "Error", description: error.message.includes("duplicate") ? "You've already reported this post." : "Failed to submit report.", variant: "destructive" });
+      } else {
+        toast({ title: "Report submitted", description: "Thank you for helping keep our community safe." });
+      }
+      setReason("");
+      setDetails("");
+      onOpenChange(false);
+    } finally {
+      setIsSubmitting(false);
     }
-    setReason("");
-    setDetails("");
-    setIsSubmitting(false);
-    onOpenChange(false);
   };
 
   return (
@@ -64,7 +67,7 @@ export function ReportPostDialog({ open, onOpenChange, postId }: ReportPostDialo
         <div className="space-y-4 py-4">
           <div className="space-y-3">
             <Label>Why are you reporting this post?</Label>
-            <RadioGroup value={reason} onValueChange={setReason}>
+            <RadioGroup value={reason} onValueChange={setReason} disabled={isSubmitting}>
               {reportReasons.map((option) => (
                 <div key={option.value} className="flex items-center space-x-3">
                   <RadioGroupItem value={option.value} id={option.value} />

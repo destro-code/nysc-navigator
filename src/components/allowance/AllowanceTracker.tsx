@@ -28,6 +28,8 @@ export function AllowanceTracker() {
   const [records, setRecords] = useState<AllowanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [rant, setRant] = useState("");
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [isPostingRant, setIsPostingRant] = useState(false);
 
   const fetchRecords = async () => {
     if (!user) return;
@@ -65,7 +67,8 @@ export function AllowanceTracker() {
   useEffect(() => { fetchRecords(); }, [user]);
 
   const toggleStatus = async (index: number) => {
-    if (!user) return;
+    if (!user || isTogglingStatus) return;
+    setIsTogglingStatus(true);
     const record = records[index];
     const newStatus = record.status === "paid" ? "pending" : "paid";
     const updated = [...records];
@@ -73,14 +76,18 @@ export function AllowanceTracker() {
     setRecords(updated);
 
     // Upsert to database
-    await supabase.from("allowance_records").upsert({
-      user_id: user.id,
-      month: record.month,
-      year: record.year,
-      amount: record.amount,
-      status: newStatus,
-      notes: record.notes,
-    }, { onConflict: "user_id,month,year" });
+    try {
+      await supabase.from("allowance_records").upsert({
+        user_id: user.id,
+        month: record.month,
+        year: record.year,
+        amount: record.amount,
+        status: newStatus,
+        notes: record.notes,
+      }, { onConflict: "user_id,month,year" });
+    } finally {
+      setIsTogglingStatus(false);
+    }
   };
 
   const totalPaid = records.filter((m) => m.status === "paid").reduce((a, b) => a + b.amount, 0);
@@ -126,6 +133,7 @@ export function AllowanceTracker() {
             <button
               key={`${record.month}-${record.year}`}
               onClick={() => toggleStatus(index)}
+              disabled={isTogglingStatus}
               className={`w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl transition-all ${record.status === "paid" ? "border-success/30" : ""}`}
             >
               <div className="flex items-center gap-3">
@@ -154,13 +162,20 @@ export function AllowanceTracker() {
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
           <MessageSquare size={16} /> Rant Box
         </h3>
-        <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" />
-        <Button variant="outline" className="w-full" onClick={async () => {
-          if (!rant.trim() || !user) return;
-          await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
-          toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
-          setRant("");
-        }}>Post Anonymously</Button>
+        <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" disabled={isPostingRant} />
+        <Button variant="outline" className="w-full" disabled={!rant.trim() || isPostingRant} onClick={async () => {
+          if (!rant.trim() || !user || isPostingRant) return;
+          setIsPostingRant(true);
+          try {
+            await supabase.from("forum_posts").insert({ user_id: user.id, content: rant.trim(), flair: "stuck" });
+            toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
+            setRant("");
+          } finally {
+            setIsPostingRant(false);
+          }
+        }}>
+          {isPostingRant ? <><Loader2 size={16} className="mr-2 animate-spin" />Posting...</> : "Post Anonymously"}
+        </Button>
       </div>
     </div>
   );
