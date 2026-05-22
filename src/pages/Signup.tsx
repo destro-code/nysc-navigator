@@ -39,9 +39,9 @@ export default function Signup() {
       if (result.success) {
         toast({
           title: "Account created!",
-          description: result.message ?? "Welcome to NYSC Buddy. Let's get you started.",
+          description: "Welcome to NYSC Buddy. Let's get you started.",
         });
-        navigate(result.message ? "/login" : "/");
+        navigate("/");
       } else {
         setError(result.error || "Signup failed");
       }
