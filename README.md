@@ -57,6 +57,10 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon-or-publishable-key>
 
 These are required by `src/integrations/supabase/client.ts`.
 
+Startup now performs **fail-fast config validation**:
+- Missing/empty `VITE_SUPABASE_URL` or `VITE_SUPABASE_PUBLISHABLE_KEY` throws a descriptive error naming the exact missing key.
+- Invalid `VITE_SUPABASE_URL` format throws a clear URL configuration error.
+
 ### 3) Supabase project requirements
 
 - A Supabase project with **Auth enabled** (email/password flow used by app).
