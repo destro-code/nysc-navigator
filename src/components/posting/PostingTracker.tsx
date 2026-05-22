@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { MapPin, CheckCircle, Circle, Clock, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/contexts/UserContext";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,6 +33,7 @@ const states = [
 ];
 
 export function PostingTracker() {
+  const { isProfileComplete, missingRequiredFields } = useUser();
   const [timeline] = useState<TimelineStep[]>(initialTimeline);
   const [isTracking, setIsTracking] = useState(true);
   const [regNumber, setRegNumber] = useState("");
@@ -105,6 +108,15 @@ export function PostingTracker() {
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
+      {!isProfileComplete && (
+        <Alert className="mb-5 border-warning/40 bg-warning/10">
+          <MapPin className="h-4 w-4" />
+          <AlertTitle>Profile required for accurate posting timeline</AlertTitle>
+          <AlertDescription>
+            Add your {missingRequiredFields.join(", ")} in Profile before using posting timeline calculations.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Your Journey</h2>
@@ -118,6 +130,14 @@ export function PostingTracker() {
         </button>
       </div>
 
+      {!isProfileComplete ? (
+        <div className="bg-card border border-dashed border-warning/40 rounded-2xl p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Posting timeline is temporarily locked until your required profile fields are complete.
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Current Status Card */}
       <div className="bg-primary rounded-2xl p-5 mb-8 shadow-card">
         <div className="flex items-center gap-3 mb-3">
@@ -196,6 +216,8 @@ export function PostingTracker() {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 }

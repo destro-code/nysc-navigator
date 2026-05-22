@@ -22,6 +22,8 @@ export interface UserProfile {
 interface UserContextType {
   currentUser: UserProfile | null;
   isLoading: boolean;
+  missingRequiredFields: Array<"batch" | "stream" | "state" | "status">;
+  isProfileComplete: boolean;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   followUser: (userId: string) => Promise<void>;
   unfollowUser: (userId: string) => Promise<void>;
@@ -37,6 +39,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
+
+  const requiredFields: Array<"batch" | "stream" | "state" | "status"> = ["batch", "stream", "state", "status"];
+  const missingRequiredFields = requiredFields.filter((field) => {
+    const value = currentUser?.[field];
+    return !value || (typeof value === "string" && value.trim().length === 0);
+  });
+  const isProfileComplete = missingRequiredFields.length === 0;
 
   // Fetch profile
   useEffect(() => {
@@ -148,7 +157,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   return (
     <UserContext.Provider
-      value={{ currentUser, isLoading, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId }}
+      value={{
+        currentUser,
+        isLoading,
+        missingRequiredFields,
+        isProfileComplete,
+        updateProfile,
+        followUser,
+        unfollowUser,
+        isFollowing,
+        followingIds,
+        getProfileByUserId,
+      }}
     >
       {children}
     </UserContext.Provider>

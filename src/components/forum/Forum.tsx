@@ -10,6 +10,7 @@ import { ReportPostDialog } from "./ReportPostDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PostSkeleton } from "@/components/ui/loading-skeleton";
 import { supabase } from "@/integrations/supabase/client";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +59,7 @@ type FilterLabel = keyof typeof FILTER_TO_FLAIR_MAP;
 
 export function Forum() {
   const { user } = useAuth();
-  const { isFollowing, followingIds } = useUser();
+  const { isFollowing, followingIds, isProfileComplete, missingRequiredFields } = useUser();
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [userVotes, setUserVotes] = useState<Record<string, "up" | "down">>({});
   const [activeFilter, setActiveFilter] = useState<FilterLabel>("All");
@@ -172,10 +173,20 @@ export function Forum() {
           <h2 className="text-2xl font-bold text-foreground">Batch Forum</h2>
           <p className="text-muted-foreground text-sm">Connect with fellow corpers</p>
         </div>
-        <Button size="sm" className="rounded-full" onClick={() => setCreateDialogOpen(true)}>
+        <Button size="sm" className="rounded-full" onClick={() => setCreateDialogOpen(true)} disabled={!isProfileComplete}>
           <Plus size={18} className="mr-1" /> Post
         </Button>
       </div>
+
+      {!isProfileComplete && (
+        <Alert className="mb-4 border-warning/40 bg-warning/10">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Finish your profile to post</AlertTitle>
+          <AlertDescription>
+            Add your {missingRequiredFields.join(", ")} in Profile to create forum posts.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {followingIds.length > 0 && (
         <div className="flex items-center gap-2 mb-4 p-3 bg-primary/5 rounded-xl border border-primary/20">
