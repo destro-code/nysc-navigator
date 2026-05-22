@@ -17,3 +17,19 @@ This project uses Supabase SQL migrations as the migration framework.
 ## Environment-safe seed rule
 
 `supabase/seed.sql` exits without inserting rows unless `app.environment` is explicitly set and is **not** `production`.
+
+## RLS policy assumptions (app tables)
+
+The app currently writes directly to these tables: `profiles`, `follows`, `forum_posts`, `post_votes`, `allowance_records`, `clearance_progress`.
+
+Security assumptions enforced in SQL policies:
+
+- Ownership rule: all user-initiated writes must satisfy `auth.uid() = <row user owner column>`.
+- Immutable ownership columns (`user_id`, and relation keys like `post_id`/`item_id` where applicable) are locked on UPDATE by comparing against the existing row.
+- System-managed counters/timestamps on `forum_posts` (e.g. `upvotes`, `downvotes`, `comments_count`, `created_at`) are not user-writable through normal user UPDATE policies.
+- Admin-only operations must be enforced in the database layer via role-aware policies/functions (`public.is_admin(...)`) and not only by client/UI route guards.
+
+Notes:
+
+- RLS cannot natively express full per-column ACLs. We model "permitted fields" with `WITH CHECK` constraints that prevent updates to disallowed columns by requiring critical fields to remain unchanged.
+- Elevated/admin writes should go through admin-scoped policies or SECURITY DEFINER RPCs with explicit role checks.
