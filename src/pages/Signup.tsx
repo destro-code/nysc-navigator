@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,9 +15,13 @@ export default function Signup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   
-  const { signup } = useAuth();
+  const { signup, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (isAuthenticated) navigate("/", { replace: true });
+  }, [isAuthenticated, navigate]);
 
   const passwordRequirements = [
     { label: "At least 6 characters", met: password.length >= 6 },
@@ -30,11 +34,14 @@ export default function Signup() {
     setError("");
     setIsSubmitting(true);
 
-    const result = await signup(email, password, confirmPassword);
+    const result = await signup(email.trim(), password, confirmPassword);
     
     if (result.success) {
-      toast({ title: "Account created!", description: "Welcome to NYSC Buddy. Let's get you started." });
-      navigate("/");
+      toast({
+        title: "Account created!",
+        description: result.message ?? "Welcome to NYSC Buddy. Let's get you started.",
+      });
+      navigate(result.message ? "/login" : "/");
     } else {
       setError(result.error || "Signup failed");
     }

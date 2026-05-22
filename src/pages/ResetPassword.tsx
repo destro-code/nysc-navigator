@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,6 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token") || "mock-token";
   
   const { resetPassword } = useAuth();
   const navigate = useNavigate();
@@ -38,7 +35,7 @@ export default function ResetPassword() {
     
     setIsSubmitting(true);
 
-    const result = await resetPassword(token, password);
+    const result = await resetPassword(password);
     
     if (result.success) {
       toast({
