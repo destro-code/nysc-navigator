@@ -32,7 +32,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>;
+  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -118,9 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
     if (error) return { success: false, error: error.message };
+
     if (!data.session) {
-      return { success: true, message: "Please check your email to verify your account before logging in." };
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+      if (loginError) return { success: false, error: loginError.message };
     }
+
     return { success: true };
   };
 
