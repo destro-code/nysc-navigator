@@ -19,14 +19,16 @@ const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border" aria-label="Primary">
       <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onTabChange(item.id)}
+            aria-label={item.label}
+            aria-current={activeTab === item.id ? "page" : undefined}
             className={cn(
-              "flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-all duration-200",
+              "flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-all duration-200 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               activeTab === item.id
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground"

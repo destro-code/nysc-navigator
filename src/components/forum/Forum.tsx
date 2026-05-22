@@ -189,7 +189,8 @@ export function Forum() {
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {(Object.keys(FILTER_TO_FLAIR_MAP) as FilterLabel[]).map((filter) => (
           <button key={filter} onClick={() => { setActiveFilter(filter); setCurrentPage(1); }}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${filter === activeFilter ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
+            aria-pressed={filter === activeFilter}
+            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${filter === activeFilter ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
           >{filter}</button>
         ))}
       </div>
@@ -229,7 +230,10 @@ export function Forum() {
                       {flairStyle.icon} {post.flair.charAt(0).toUpperCase() + post.flair.slice(1)}
                     </span>
                     <DropdownMenu>
-                      <DropdownMenuTrigger className="p-1 hover:bg-muted rounded-full transition-colors">
+                      <DropdownMenuTrigger
+                        aria-label={`Open post actions for ${post.author_username}`}
+                        className="p-1 hover:bg-muted rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
                         <MoreHorizontal size={16} className="text-muted-foreground" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -254,15 +258,26 @@ export function Forum() {
                   {post.upvotes > 20 && <p className="text-xs text-muted-foreground mb-3">🔥 {post.upvotes} corp members agree</p>}
 
                   <div className="flex items-center gap-4 pt-3 border-t border-border">
-                    <button onClick={() => handleVote(post.id, "up")}
-                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "up" ? "text-success" : "text-muted-foreground hover:text-foreground"}`}>
+                    <button
+                      onClick={() => handleVote(post.id, "up")}
+                      aria-label={`Upvote post by ${post.author_username}`}
+                      aria-pressed={userVote === "up"}
+                      className={`flex items-center gap-1 text-sm transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${userVote === "up" ? "text-success" : "text-muted-foreground hover:text-foreground"}`}
+                    >
                       <ThumbsUp size={16} /> <span>{post.upvotes}</span>
                     </button>
-                    <button onClick={() => handleVote(post.id, "down")}
-                      className={`flex items-center gap-1 text-sm transition-colors ${userVote === "down" ? "text-danger" : "text-muted-foreground hover:text-foreground"}`}>
+                    <button
+                      onClick={() => handleVote(post.id, "down")}
+                      aria-label={`Downvote post by ${post.author_username}`}
+                      aria-pressed={userVote === "down"}
+                      className={`flex items-center gap-1 text-sm transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${userVote === "down" ? "text-danger" : "text-muted-foreground hover:text-foreground"}`}
+                    >
                       <ThumbsDown size={16} /> <span>{post.downvotes}</span>
                     </button>
-                    <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground ml-auto">
+                    <button
+                      aria-label={`Open comments for post by ${post.author_username}`}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground ml-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
                       <MessageCircle size={16} /> <span>{post.comments_count}</span>
                     </button>
                   </div>

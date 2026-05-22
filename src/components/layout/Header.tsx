@@ -29,7 +29,10 @@ export function Header() {
           
           {isAuthenticated ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="p-1 rounded-full hover:bg-muted transition-colors">
+              <DropdownMenuTrigger
+                aria-label="Open account menu"
+                className="p-1 rounded-full hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
                 <Avatar className="w-8 h-8">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                     {user?.email?.charAt(0).toUpperCase() || "U"}
