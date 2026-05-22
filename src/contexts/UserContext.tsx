@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeApiError } from "@/lib/api-error";
 
@@ -41,6 +42,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+
   // Fetch profile
   useEffect(() => {
     if (!user) {
@@ -53,47 +56,76 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const fetchProfile = async () => {
       setIsLoading(true);
       setError(null);
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
-        if (profileError) throw profileError;
 
-        if (profile) {
-          const [{ count: followerCount, error: followerCountError }, { count: followingCount, error: followingCountError }] = await Promise.all([
-            supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
-            supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
-          ]);
-          if (followerCountError) throw followerCountError;
-          if (followingCountError) throw followingCountError;
-
-          setCurrentUser({
-            ...profile,
-            status: profile.status as UserProfile["status"],
-            lga: profile.lga || "",
-            ppa: profile.ppa || "",
-            bio: profile.bio || "",
-            avatar_url: profile.avatar_url || "",
-            reg_number: profile.reg_number || "",
-            batch: profile.batch || "",
-            stream: profile.stream || "",
-            state: profile.state || "",
-            follower_count: followerCount || 0,
-            following_count: followingCount || 0,
-          });
-        }
-
+      const fetchFollowingIds = async () => {
         const { data: follows, error: followsError } = await supabase
           .from("follows")
           .select("following_id")
           .eq("follower_id", user.id);
-        if (followsError) throw followsError;
 
+        if (followsError) throw followsError;
         setFollowingIds(follows?.map((f) => f.following_id) || []);
+      };
+
+      const buildProfileState = async (profile: ProfileRow) => {
+        const [{ count: followerCount, error: followerCountError }, { count: followingCount, error: followingCountError }] = await Promise.all([
+          supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id),
+          supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id),
+        ]);
+
+        if (followerCountError) throw followerCountError;
+        if (followingCountError) throw followingCountError;
+
+        setCurrentUser({
+          ...profile,
+          status: profile.status as UserProfile["status"],
+          lga: profile.lga || "",
+          ppa: profile.ppa || "",
+          bio: profile.bio || "",
+          avatar_url: profile.avatar_url || "",
+          reg_number: profile.reg_number || "",
+          batch: profile.batch || "",
+          stream: profile.stream || "",
+          state: profile.state || "",
+          follower_count: followerCount || 0,
+          following_count: followingCount || 0,
+        });
+      };
+
+      try {
+        const { data: existingProfile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (profileError) throw profileError;
+
+        let profile = existingProfile;
+
+        if (!profile) {
+          const baseUsername = (user.user_metadata?.username as string | undefined) || user.email?.split("@")[0] || "corper";
+          const { data: createdProfile, error: createProfileError } = await supabase
+            .from("profiles")
+            .upsert({ user_id: user.id, username: baseUsername }, { onConflict: "user_id" })
+            .select("*")
+            .maybeSingle();
+
+          if (createProfileError) throw createProfileError;
+          profile = createdProfile;
+        }
+
+        if (profile) {
+          await buildProfileState(profile);
+        }
       } catch (err) {
         setError(normalizeApiError(err, "Unable to load profile data right now."));
+      }
+
+      try {
+        await fetchFollowingIds();
+      } catch (err) {
+        setError((prev) => prev ?? normalizeApiError(err, "Unable to load profile data right now."));
       } finally {
         setIsLoading(false);
       }
