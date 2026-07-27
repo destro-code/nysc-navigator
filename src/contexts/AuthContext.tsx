@@ -75,9 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await authService.login(email, password);
     if (result.success) {
       applySession(result.session);
-      return { success: true };
+      return { success: true as const };
     }
-    return { success: false, error: result.error };
+    return { success: false as const, error: result.error };
   };
 
   const signup = async (email: string, password: string, confirmPassword: string) => {
@@ -91,9 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await authService.signup(normalizedEmail, password);
     if (result.success) {
       applySession(result.session);
-      return { success: true };
+      return { success: true as const };
     }
-    return { success: false, error: result.error };
+    return { success: false as const, error: result.error };
   };
 
   const logout = async () => {
@@ -103,14 +103,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const forgotPassword = async (email: string) => {
     const result = await authService.forgotPassword(email);
-    return result.success ? { success: true } : { success: false, error: result.error };
+    if (result.success) return { success: true as const };
+    return { success: false as const, error: result.error };
   };
 
   const resetPassword = async (newPassword: string) => {
     const passwordValidationError = validatePassword(newPassword);
     if (passwordValidationError) return { success: false, error: passwordValidationError };
     const result = await authService.resetPassword(newPassword);
-    return result.success ? { success: true } : { success: false, error: result.error };
+    if (result.success) return { success: true as const };
+    return { success: false as const, error: result.error };
   };
 
   return (
