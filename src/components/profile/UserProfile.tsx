@@ -7,30 +7,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle, Clock, AlertTriangle, Edit2, ChevronLeft, ChevronRight, MessageCircle, ThumbsUp } from "lucide-react";
 import { ProfileEditDialog } from "./ProfileEditDialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { supabase } from "@/integrations/supabase/client";
-
-interface ProfilePost {
-  id: string;
-  content: string;
-  user_id: string;
-  upvotes: number;
-  comments_count: number;
-  created_at: string;
-  author_username: string;
-}
+import { forumService } from "@/services/forum.service";
+import type { ForumPost } from "@/types";
 
 const POSTS_PER_PAGE = 5;
 
 const getStatusStyle = (status: string) => {
   switch (status) {
-    case "cleared":
-      return { bg: "bg-success", text: "text-success-foreground", label: "Cleared", icon: <CheckCircle size={12} /> };
-    case "serving":
-      return { bg: "bg-warning", text: "text-warning-foreground", label: "Serving", icon: <Clock size={12} /> };
-    case "in-camp":
-      return { bg: "bg-primary", text: "text-primary-foreground", label: "In Camp", icon: <AlertTriangle size={12} /> };
-    default:
-      return { bg: "bg-muted", text: "text-muted-foreground", label: "Unknown", icon: <Clock size={12} /> };
+    case "cleared": return { bg: "bg-success", text: "text-success-foreground", label: "Cleared", icon: <CheckCircle size={12} /> };
+    case "serving": return { bg: "bg-warning", text: "text-warning-foreground", label: "Serving", icon: <Clock size={12} /> };
+    case "in-camp": return { bg: "bg-primary", text: "text-primary-foreground", label: "In Camp", icon: <AlertTriangle size={12} /> };
+    default: return { bg: "bg-muted", text: "text-muted-foreground", label: "Unknown", icon: <Clock size={12} /> };
   }
 };
 
@@ -38,64 +25,22 @@ export function UserProfile() {
   const { currentUser, isLoading } = useUser();
   const { user } = useAuth();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [posts, setPosts] = useState<ProfilePost[]>([]);
-  const [likedPosts, setLikedPosts] = useState<ProfilePost[]>([]);
+  const [posts, setPosts] = useState<ForumPost[]>([]);
+  const [likedPosts, setLikedPosts] = useState<ForumPost[]>([]);
   const [activeTab, setActiveTab] = useState("posts");
   const [postsPage, setPostsPage] = useState(1);
   const [likesPage, setLikesPage] = useState(1);
 
   useEffect(() => {
-    const fetchTabData = async () => {
-      if (!user) return;
-
-      const { data: authoredPosts } = await supabase
-        .from("forum_posts")
-        .select("id, content, user_id, upvotes, comments_count, created_at")
-        .eq("is_deleted", false)
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      const { data: likedVotes } = await supabase
-        .from("post_votes")
-        .select("post_id, forum_posts(id, content, user_id, upvotes, comments_count, created_at)")
-        .eq("user_id", user.id)
-        .eq("vote_type", "up")
-        .order("created_at", { ascending: false });
-
-      const allUserIds = new Set<string>();
-      authoredPosts?.forEach((post) => allUserIds.add(post.user_id));
-      likedVotes?.forEach((vote) => {
-        const post = Array.isArray(vote.forum_posts) ? vote.forum_posts[0] : vote.forum_posts;
-        if (post?.user_id) allUserIds.add(post.user_id);
-      });
-
-      const { data: profiles } = allUserIds.size
-        ? await supabase.from("profiles").select("user_id, username").in("user_id", Array.from(allUserIds))
-        : { data: [] };
-
-      const profileMap = new Map(profiles?.map((p) => [p.user_id, p.username]) || []);
-
-      setPosts((authoredPosts || []).map((post) => ({
-        ...post,
-        author_username: profileMap.get(post.user_id) || "Corper",
-      })));
-
-      setLikedPosts((likedVotes || []).flatMap((vote) => {
-        const post = Array.isArray(vote.forum_posts) ? vote.forum_posts[0] : vote.forum_posts;
-        if (!post || !post.id) return [];
-        return [{
-          id: post.id,
-          content: post.content,
-          user_id: post.user_id,
-          upvotes: post.upvotes,
-          comments_count: post.comments_count,
-          created_at: post.created_at,
-          author_username: profileMap.get(post.user_id) || "Corper",
-        }];
-      }));
-    };
-
-    fetchTabData();
+    if (!user) return;
+    (async () => {
+      const [authored, liked] = await Promise.all([
+        forumService.listUserPosts(user.id),
+        forumService.listLikedPosts(user.id),
+      ]);
+      setPosts(authored);
+      setLikedPosts(liked);
+    })();
   }, [user]);
 
   const timeAgo = (dateStr: string) => {
@@ -107,7 +52,7 @@ export function UserProfile() {
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
-  const paginate = (items: ProfilePost[], currentPage: number) => {
+  const paginate = (items: ForumPost[], currentPage: number) => {
     const totalPages = Math.max(1, Math.ceil(items.length / POSTS_PER_PAGE));
     const pageItems = items.slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE);
     return { totalPages, pageItems };
@@ -117,27 +62,14 @@ export function UserProfile() {
   const paginatedLikes = useMemo(() => paginate(likedPosts, likesPage), [likedPosts, likesPage]);
 
   if (isLoading || !currentUser) {
-    return (
-      <div className="px-4 py-6 pb-24 animate-fade-in">
-        <p className="text-muted-foreground text-center">Loading profile...</p>
-      </div>
-    );
+    return <div className="px-4 py-6 pb-24 animate-fade-in"><p className="text-muted-foreground text-center">Loading profile...</p></div>;
   }
 
   const statusStyle = getStatusStyle(currentUser.status);
   const initials = currentUser.username.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
-  const renderPostList = (items: ProfilePost[], totalPages: number, currentPage: number, setPage: (page: number) => void, emptyTitle: string, emptyDescription: string) => {
-    if (items.length === 0) {
-      return (
-        <EmptyState
-          icon={<MessageCircle size={28} />}
-          title={emptyTitle}
-          description={emptyDescription}
-        />
-      );
-    }
-
+  const renderPostList = (items: ForumPost[], totalPages: number, currentPage: number, setPage: (p: number) => void, emptyTitle: string, emptyDescription: string) => {
+    if (items.length === 0) return <EmptyState icon={<MessageCircle size={28} />} title={emptyTitle} description={emptyDescription} />;
     return (
       <>
         <div className="space-y-4">
@@ -155,7 +87,6 @@ export function UserProfile() {
             </div>
           ))}
         </div>
-
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-6">
             <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}><ChevronLeft size={16} /></Button>
@@ -181,9 +112,7 @@ export function UserProfile() {
               <p className="text-sm text-muted-foreground">{currentUser.state || "No state set"}</p>
             </div>
           </div>
-          <Button variant="outline" size="icon" onClick={() => setEditDialogOpen(true)}>
-            <Edit2 size={18} />
-          </Button>
+          <Button variant="outline" size="icon" onClick={() => setEditDialogOpen(true)}><Edit2 size={18} /></Button>
         </div>
 
         <div className="flex items-center gap-2 mb-4">

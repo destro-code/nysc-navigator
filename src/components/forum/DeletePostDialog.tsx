@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { forumService } from "@/services/forum.service";
 
 interface DeletePostDialogProps {
   open: boolean;
@@ -18,15 +18,16 @@ export function DeletePostDialog({ open, onOpenChange, postId, onDeleted }: Dele
 
   const handleDelete = async () => {
     setIsDeleting(true);
-    const { error } = await supabase.from("forum_posts").update({ is_deleted: true }).eq("id", postId);
-    if (error) {
-      toast({ title: "Error", description: "Failed to delete post.", variant: "destructive" });
-    } else {
+    try {
+      await forumService.deletePost(postId);
       toast({ title: "Post deleted", description: "Your post has been removed." });
       onDeleted?.();
+    } catch {
+      toast({ title: "Error", description: "Failed to delete post.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+      onOpenChange(false);
     }
-    setIsDeleting(false);
-    onOpenChange(false);
   };
 
   return (
