@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { authService } from "@/services/auth.service";
-import { normalizeApiError } from "@/lib/api-error";
+import { supabase } from "@/lib/supabase";
 import type { Session } from "@/types";
 
 export interface AuthUser {
@@ -9,7 +9,7 @@ export interface AuthUser {
   username: string;
 }
 
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_LETTER_REGEX = /[a-zA-Z]/;
 const PASSWORD_NUMBER_REGEX = /\d/;
 
@@ -61,13 +61,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    try {
-      applySession(authService.getSession());
-    } catch (err) {
-      setError(normalizeApiError(err, "Unable to restore auth state."));
-    } finally {
-      setIsLoading(false);
-    }
+    let mounted = true;
+
+    const restoreSession = async () => {
+      try {
+        const session = await authService.getSession();
+        if (mounted) applySession(session);
+      } catch {
+        if (mounted) setError("Unable to restore auth state.");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    void restoreSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async () => {
+      const session = await authService.getSession();
+      if (mounted) applySession(session);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -126,6 +143,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
