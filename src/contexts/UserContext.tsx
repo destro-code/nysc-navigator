@@ -6,10 +6,12 @@ import type { UserProfile } from "@/types";
 
 export type { UserProfile };
 
+type RequiredProfileField = "batch" | "stream" | "state" | "status";
+
 interface UserContextType {
   currentUser: UserProfile | null;
   isLoading: boolean;
-  missingRequiredFields: Array<"batch" | "stream" | "state" | "status">;
+  missingRequiredFields: RequiredProfileField[];
   isProfileComplete: boolean;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   followUser: (userId: string) => Promise<void>;
@@ -21,6 +23,7 @@ interface UserContextType {
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
+const requiredFields: RequiredProfileField[] = ["batch", "stream", "state", "status"];
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -53,7 +56,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return;
@@ -64,7 +67,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const followUser = async (userId: string) => {
     if (!user) return;
     await profileService.follow(user.id, userId);
-    setFollowingIds((prev) => [...prev, userId]);
+    setFollowingIds((prev) => prev.includes(userId) ? prev : [...prev, userId]);
   };
 
   const unfollowUser = async (userId: string) => {
@@ -74,13 +77,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   const isFollowing = (userId: string) => followingIds.includes(userId);
-
   const getProfileByUserId = (userId: string) => profileService.getProfile(userId);
+  const missingRequiredFields = currentUser ? requiredFields.filter((field) => !currentUser[field]) : requiredFields;
+  const isProfileComplete = !!currentUser && missingRequiredFields.length === 0;
 
   return (
-    <UserContext.Provider
-      value={{ currentUser, isLoading, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId, error }}
-    >
+    <UserContext.Provider value={{ currentUser, isLoading, missingRequiredFields, isProfileComplete, updateProfile, followUser, unfollowUser, isFollowing, followingIds, getProfileByUserId, error }}>
       {children}
     </UserContext.Provider>
   );
@@ -88,6 +90,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
 export function useUser() {
   const context = useContext(UserContext);
-  if (!context) throw new Error("useUser must be used within a UserProvider");
+  if (!context) throw new Error("useUser must be used within UserProvider");
   return context;
 }
