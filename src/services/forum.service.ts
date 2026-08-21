@@ -1,141 +1,148 @@
-import { delay, ensureSeeded, storage, uid } from "@/data/storage";
-import { seedPosts, seedReports, seedVotes } from "@/data/seed";
+import { supabase } from "@/lib/supabase";
 import type { ForumPost, PostFlair, PostReport, PostVote, VoteType } from "@/types";
 import { profileService } from "./profile.service";
 
-const POSTS_KEY = "posts";
-const VOTES_KEY = "votes";
-const REPORTS_KEY = "reports";
-
-const readPosts = (): ForumPost[] => ensureSeeded(POSTS_KEY, seedPosts);
-const writePosts = (list: ForumPost[]) => storage.set(POSTS_KEY, list);
-const readVotes = (): PostVote[] => ensureSeeded(VOTES_KEY, seedVotes);
-const writeVotes = (list: PostVote[]) => storage.set(VOTES_KEY, list);
-const readReports = (): PostReport[] => ensureSeeded(REPORTS_KEY, seedReports);
-const writeReports = (list: PostReport[]) => storage.set(REPORTS_KEY, list);
+const toVoteType = (value: number): VoteType => (value === 1 ? "up" : "down");
 
 export const forumService = {
   async listPosts(): Promise<ForumPost[]> {
-    await delay();
-    return readPosts()
-      .filter((p) => !p.is_deleted)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const { data, error } = await supabase
+      .from("forum_posts")
+      .select("id, content, user_id, flair, created_at, updated_at, profiles!forum_posts_user_id_fkey(username, status), post_votes(value)")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    return (data ?? []).map((row: any) => {
+      const votes = row.post_votes ?? [];
+      const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+      return {
+        id: row.id,
+        content: row.content,
+        user_id: row.user_id,
+        author_username: profile?.username ?? "Corper",
+        author_status: profile?.status ?? "serving",
+        created_at: row.created_at,
+        upvotes: votes.filter((v: { value: number }) => v.value === 1).length,
+        downvotes: votes.filter((v: { value: number }) => v.value === -1).length,
+        comments_count: 0,
+        flair: row.flair,
+      } satisfies ForumPost;
+    });
   },
 
   async getUserVotes(userId: string): Promise<Record<string, VoteType>> {
-    await delay(60);
-    const map: Record<string, VoteType> = {};
-    readVotes().filter((v) => v.user_id === userId).forEach((v) => { map[v.post_id] = v.vote_type; });
-    return map;
+    const { data, error } = await supabase.from("post_votes").select("post_id, value").eq("user_id", userId);
+    if (error) throw error;
+    return Object.fromEntries((data ?? []).map((vote) => [vote.post_id, toVoteType(vote.value)]));
   },
 
   async createPost(input: { user_id: string; content: string; flair: PostFlair }): Promise<ForumPost> {
-    await delay();
+    const content = input.content.trim();
+    if (!content) throw new Error("Post cannot be empty.");
+    if (content.length > 5000) throw new Error("Post cannot exceed 5000 characters.");
+
+    const { data, error } = await supabase
+      .from("forum_posts")
+      .insert({ user_id: input.user_id, content, flair: input.flair })
+      .select("id, content, user_id, flair, created_at")
+      .single();
+    if (error) throw error;
+
     const profile = await profileService.getProfile(input.user_id);
-    const post: ForumPost = {
-      id: uid(),
-      user_id: input.user_id,
-      author_username: profile?.username || "Corper",
-      author_status: profile?.status || "serving",
-      content: input.content.trim(),
-      flair: input.flair,
-      created_at: new Date().toISOString(),
+    return {
+      id: data.id,
+      user_id: data.user_id,
+      author_username: profile?.username ?? "Corper",
+      author_status: profile?.status ?? "serving",
+      content: data.content,
+      flair: data.flair,
+      created_at: data.created_at,
       upvotes: 0,
       downvotes: 0,
       comments_count: 0,
     };
-    writePosts([post, ...readPosts()]);
-    return post;
   },
 
   async deletePost(postId: string): Promise<void> {
-    await delay();
-    const posts = readPosts().map((p) => (p.id === postId ? { ...p, is_deleted: true } : p));
-    writePosts(posts);
+    const { error } = await supabase.from("forum_posts").delete().eq("id", postId);
+    if (error) throw error;
   },
 
   async vote(userId: string, postId: string, type: VoteType): Promise<{ upvotes: number; downvotes: number; user_vote: VoteType | null }> {
-    await delay(80);
-    const votes = readVotes();
-    const existingIdx = votes.findIndex((v) => v.user_id === userId && v.post_id === postId);
+    const value = type === "up" ? 1 : -1;
+    const { data: existing, error: existingError } = await supabase
+      .from("post_votes")
+      .select("value")
+      .eq("post_id", postId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (existingError) throw existingError;
 
-    let userVote: VoteType | null = type;
-    if (existingIdx >= 0) {
-      if (votes[existingIdx].vote_type === type) {
-        // toggle off
-        votes.splice(existingIdx, 1);
-        userVote = null;
-      } else {
-        votes[existingIdx] = { ...votes[existingIdx], vote_type: type };
-      }
+    if (existing?.value === value) {
+      const { error } = await supabase.from("post_votes").delete().eq("post_id", postId).eq("user_id", userId);
+      if (error) throw error;
     } else {
-      votes.push({ user_id: userId, post_id: postId, vote_type: type });
+      const { error } = await supabase
+        .from("post_votes")
+        .upsert({ post_id: postId, user_id: userId, value }, { onConflict: "post_id,user_id" });
+      if (error) throw error;
     }
-    writeVotes(votes);
 
-    // Recompute counts
-    const posts = readPosts();
-    const pIdx = posts.findIndex((p) => p.id === postId);
-    if (pIdx < 0) throw new Error("Post not found");
-    const upvotes = votes.filter((v) => v.post_id === postId && v.vote_type === "up").length;
-    const downvotes = votes.filter((v) => v.post_id === postId && v.vote_type === "down").length;
-    // Preserve seeded baseline counts by using max between recomputed and existing baseline for organic seed feel.
-    const baseUp = posts[pIdx].upvotes ?? 0;
-    const baseDown = posts[pIdx].downvotes ?? 0;
-    // If seed didn't have this user, keep seed counts + adjust delta
-    posts[pIdx] = {
-      ...posts[pIdx],
-      upvotes: Math.max(upvotes, baseUp) - (userVote === null && type === "up" ? 1 : 0) + (userVote === "up" ? 1 : 0) - (baseUp && userVote === "up" ? 0 : 0),
-      downvotes: Math.max(downvotes, baseDown),
+    const { data: votes, error } = await supabase.from("post_votes").select("value").eq("post_id", postId);
+    if (error) throw error;
+    return {
+      upvotes: (votes ?? []).filter((v) => v.value === 1).length,
+      downvotes: (votes ?? []).filter((v) => v.value === -1).length,
+      user_vote: existing?.value === value ? null : type,
     };
-    // Simpler: just recompute cleanly using stored votes only.
-    posts[pIdx] = { ...posts[pIdx], upvotes, downvotes };
-    writePosts(posts);
-    return { upvotes, downvotes, user_vote: userVote };
   },
 
   async reportPost(input: { user_id: string; post_id: string; reason: string }): Promise<PostReport> {
-    await delay();
-    const reports = readReports();
-    if (reports.some((r) => r.user_id === input.user_id && r.post_id === input.post_id && r.status === "pending")) {
-      throw new Error("You've already reported this post.");
-    }
-    const report: PostReport = {
-      id: uid(),
-      post_id: input.post_id,
-      user_id: input.user_id,
-      reason: input.reason,
-      status: "pending",
-      created_at: new Date().toISOString(),
-    };
-    writeReports([report, ...reports]);
-    return report;
+    const { data: existing, error: existingError } = await supabase
+      .from("post_reports")
+      .select("id")
+      .eq("user_id", input.user_id)
+      .eq("post_id", input.post_id)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing) throw new Error("You've already reported this post.");
+
+    const { data, error } = await supabase
+      .from("post_reports")
+      .insert({ user_id: input.user_id, post_id: input.post_id, reason: input.reason })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as PostReport;
   },
 
   async listReports(): Promise<Array<PostReport & { post_content?: string }>> {
-    await delay();
-    const reports = readReports().filter((r) => r.status === "pending");
-    const posts = readPosts();
-    return reports.map((r) => ({ ...r, post_content: posts.find((p) => p.id === r.post_id)?.content }));
+    const { data, error } = await supabase
+      .from("post_reports")
+      .select("*, forum_posts(content)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({ ...row, post_content: row.forum_posts?.content }));
   },
 
   async resolveReport(reportId: string, action: "dismissed" | "reviewed", opts?: { removePostId?: string }): Promise<void> {
-    await delay();
-    const reports = readReports().map((r) => (r.id === reportId ? { ...r, status: action } : r));
-    writeReports(reports);
-    if (opts?.removePostId) {
-      await forumService.deletePost(opts.removePostId);
-    }
+    const { error } = await supabase.from("post_reports").update({ status: action }).eq("id", reportId);
+    if (error) throw error;
+    if (opts?.removePostId) await this.deletePost(opts.removePostId);
   },
 
   async listUserPosts(userId: string): Promise<ForumPost[]> {
-    await delay();
-    return readPosts().filter((p) => p.user_id === userId && !p.is_deleted);
+    const posts = await this.listPosts();
+    return posts.filter((post) => post.user_id === userId);
   },
 
   async listLikedPosts(userId: string): Promise<ForumPost[]> {
-    await delay();
-    const likedIds = readVotes().filter((v) => v.user_id === userId && v.vote_type === "up").map((v) => v.post_id);
-    return readPosts().filter((p) => likedIds.includes(p.id) && !p.is_deleted);
+    const { data, error } = await supabase.from("post_votes").select("post_id").eq("user_id", userId).eq("value", 1);
+    if (error) throw error;
+    const ids = new Set((data ?? []).map((vote) => vote.post_id));
+    const posts = await this.listPosts();
+    return posts.filter((post) => ids.has(post.id));
   },
 };

@@ -1,11 +1,5 @@
-import { delay, ensureSeeded, storage } from "@/data/storage";
-import { DEMO_USER_ID, seedPosting } from "@/data/seed";
+import { supabase } from "@/lib/supabase";
 import type { PostingProgress } from "@/types";
-
-const KEY = "posting";
-
-const readAll = (): PostingProgress[] => ensureSeeded(KEY, () => [seedPosting()]);
-const writeAll = (list: PostingProgress[]) => storage.set(KEY, list);
 
 const empty = (userId: string): PostingProgress => ({
   user_id: userId,
@@ -21,19 +15,20 @@ const empty = (userId: string): PostingProgress => ({
 
 export const postingService = {
   async get(userId: string): Promise<PostingProgress> {
-    await delay();
-    const list = readAll();
-    return list.find((p) => p.user_id === userId) ?? (userId === DEMO_USER_ID ? seedPosting() : empty(userId));
+    const { data, error } = await supabase.from("posting_progress").select("*").eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    return (data as PostingProgress | null) ?? empty(userId);
   },
 
   async save(userId: string, updates: Partial<PostingProgress>): Promise<PostingProgress> {
-    await delay();
-    const list = readAll();
-    const idx = list.findIndex((p) => p.user_id === userId);
-    const base = idx >= 0 ? list[idx] : empty(userId);
-    const next = { ...base, ...updates, user_id: userId };
-    if (idx >= 0) list[idx] = next; else list.push(next);
-    writeAll(list);
-    return next;
+    const payload = { ...updates, user_id: userId };
+    const { data, error } = await supabase
+      .from("posting_progress")
+      .upsert(payload, { onConflict: "user_id" })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return data as PostingProgress;
   },
 };
