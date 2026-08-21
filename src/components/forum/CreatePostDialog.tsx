@@ -64,7 +64,7 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Flair</Label>
-            <Select value={flair} onValueChange={setFlair}>
+            <Select value={flair} onValueChange={setFlair} disabled={isSubmitting}>
               <SelectTrigger><SelectValue placeholder="Select a flair" /></SelectTrigger>
               <SelectContent>
                 {flairOptions.map((option) => (

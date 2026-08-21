@@ -60,7 +60,7 @@ export function ReportPostDialog({ open, onOpenChange, postId }: ReportPostDialo
         <div className="space-y-4 py-4">
           <div className="space-y-3">
             <Label>Why are you reporting this post?</Label>
-            <RadioGroup value={reason} onValueChange={setReason}>
+            <RadioGroup value={reason} onValueChange={setReason} disabled={isSubmitting}>
               {reportReasons.map((option) => (
                 <div key={option.value} className="flex items-center space-x-3">
                   <RadioGroupItem value={option.value} id={option.value} />

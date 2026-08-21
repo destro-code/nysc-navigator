@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 interface ProfileEditDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
     username: "", bio: "", batch: "", stream: "", state: "", lga: "", ppa: "", reg_number: "",
     status: "serving" as "in-camp" | "serving" | "cleared",
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -55,9 +57,15 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
   }, [currentUser, open, activeBatchLabel, activeBatch?.stream]);
 
   const handleSave = async () => {
-    await updateProfile(formData);
-    toast.success("Profile updated successfully!");
-    onOpenChange(false);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await updateProfile(formData);
+      toast.success("Profile updated successfully!");
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -70,27 +78,27 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
-            <Input id="username" value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value })} placeholder="Your display name" />
+            <Input id="username" value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value })} placeholder="Your display name" disabled={isSaving} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="bio">Bio</Label>
-            <Textarea id="bio" value={formData.bio} onChange={(e) => setFormData({ ...formData, bio: e.target.value })} placeholder="Tell us about yourself..." className="resize-none" />
+            <Textarea id="bio" value={formData.bio} onChange={(e) => setFormData({ ...formData, bio: e.target.value })} placeholder="Tell us about yourself..." className="resize-none" disabled={isSaving} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="reg_number">Registration Number</Label>
-            <Input id="reg_number" value={formData.reg_number} onChange={(e) => setFormData({ ...formData, reg_number: e.target.value })} placeholder="e.g. NYSC/2024/123456" />
+            <Input id="reg_number" value={formData.reg_number} onChange={(e) => setFormData({ ...formData, reg_number: e.target.value })} placeholder="e.g. NYSC/2024/123456" disabled={isSaving} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Batch</Label>
-              <Select value={formData.batch} onValueChange={(v) => setFormData({ ...formData, batch: v })}>
+              <Select value={formData.batch} onValueChange={(v) => setFormData({ ...formData, batch: v })} disabled={isSaving}>
                 <SelectTrigger><SelectValue placeholder="Select batch" /></SelectTrigger>
                 <SelectContent>{availableBatches.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Stream</Label>
-              <Select value={formData.stream} onValueChange={(v) => setFormData({ ...formData, stream: v })}>
+              <Select value={formData.stream} onValueChange={(v) => setFormData({ ...formData, stream: v })} disabled={isSaving}>
                 <SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger>
                 <SelectContent>{streams.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
@@ -98,7 +106,7 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
           </div>
           <div className="space-y-2">
             <Label>State of Deployment</Label>
-            <Select value={formData.state} onValueChange={(v) => setFormData({ ...formData, state: v })}>
+            <Select value={formData.state} onValueChange={(v) => setFormData({ ...formData, state: v })} disabled={isSaving}>
               <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
               <SelectContent>{nigerianStates.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
@@ -106,16 +114,16 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="lga">LGA</Label>
-              <Input id="lga" value={formData.lga} onChange={(e) => setFormData({ ...formData, lga: e.target.value })} placeholder="e.g. Ikeja" />
+              <Input id="lga" value={formData.lga} onChange={(e) => setFormData({ ...formData, lga: e.target.value })} placeholder="e.g. Ikeja" disabled={isSaving} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="ppa">PPA</Label>
-              <Input id="ppa" value={formData.ppa} onChange={(e) => setFormData({ ...formData, ppa: e.target.value })} placeholder="e.g. Ministry of Health" />
+              <Input id="ppa" value={formData.ppa} onChange={(e) => setFormData({ ...formData, ppa: e.target.value })} placeholder="e.g. Ministry of Health" disabled={isSaving} />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v as typeof formData.status })}>
+            <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v as typeof formData.status })} disabled={isSaving}>
               <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="in-camp">In Camp</SelectItem>
@@ -126,8 +134,10 @@ export function ProfileEditDialog({ open, onOpenChange }: ProfileEditDialogProps
           </div>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">Cancel</Button>
-          <Button onClick={handleSave} className="flex-1">Save Changes</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1" disabled={isSaving}>Cancel</Button>
+          <Button onClick={handleSave} className="flex-1" disabled={isSaving}>
+            {isSaving ? <><Loader2 size={16} className="mr-2 animate-spin" />Saving...</> : "Save Changes"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
