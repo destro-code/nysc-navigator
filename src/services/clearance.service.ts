@@ -1,32 +1,8 @@
-import { supabase } from "@/lib/supabase";
+import { storage } from "@/data/storage";
+import { seedClearance } from "@/data/seed";
 import type { ClearanceProgressEntry } from "@/types";
-
-export const clearanceService = {
-  async list(userId: string): Promise<ClearanceProgressEntry[]> {
-    const { data, error } = await supabase
-      .from("clearance_progress")
-      .select("*")
-      .eq("user_id", userId);
-    if (error) throw error;
-    return (data ?? []) as ClearanceProgressEntry[];
-  },
-
-  async toggle(entry: Omit<ClearanceProgressEntry, "completed_at">): Promise<ClearanceProgressEntry> {
-    const next = {
-      user_id: entry.user_id,
-      item_id: entry.item_id,
-      section_id: entry.section_id,
-      tab: entry.tab,
-      completed: entry.completed,
-      completed_at: entry.completed ? new Date().toISOString() : null,
-    };
-
-    const { data, error } = await supabase
-      .from("clearance_progress")
-      .upsert(next, { onConflict: "user_id,item_id" })
-      .select("*")
-      .single();
-    if (error) throw error;
-    return data as ClearanceProgressEntry;
-  },
+const key=(id:string)=>`clearance.${id}`;
+export const clearanceService={
+ async list(userId:string){return storage.get<ClearanceProgressEntry[]>(key(userId),userId==="demo-user-1"?seedClearance():[]);},
+ async toggle(entry:Omit<ClearanceProgressEntry,"completed_at">){const next={...entry,completed_at:entry.completed?new Date().toISOString():null};const rows=await this.list(entry.user_id);const result=[...rows.filter(r=>r.item_id!==entry.item_id),next];storage.set(key(entry.user_id),result);return next;},
 };
