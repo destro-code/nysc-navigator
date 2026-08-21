@@ -1,73 +1,16 @@
-import { supabase } from "@/lib/supabase";
+import { storage } from "@/data/storage";
+import { seedFollows, seedUsers } from "@/data/seed";
 import type { Follow, UserProfile } from "@/types";
-
-const mapProfile = (row: UserProfile): UserProfile => row;
-
-export const profileService = {
-  async getProfile(userId: string): Promise<UserProfile | null> {
-    const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
-    if (error) throw error;
-    return data ? mapProfile(data as UserProfile) : null;
-  },
-
-  async ensureProfile(userId: string, username: string): Promise<UserProfile> {
-    const existing = await this.getProfile(userId);
-    if (existing) return existing;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert({ user_id: userId, username })
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return mapProfile(data as UserProfile);
-  },
-
-  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    const safeUpdates = { ...updates };
-    delete safeUpdates.id;
-    delete safeUpdates.user_id;
-    delete safeUpdates.follower_count;
-    delete safeUpdates.following_count;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(safeUpdates)
-      .eq("user_id", userId)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return mapProfile(data as UserProfile);
-  },
-
-  async listUsers(): Promise<UserProfile[]> {
-    const { data, error } = await supabase.from("profiles").select("*").order("username");
-    if (error) throw error;
-    return (data ?? []) as UserProfile[];
-  },
-
-  async follow(followerId: string, followingId: string): Promise<void> {
-    if (followerId === followingId) throw new Error("You cannot follow yourself.");
-    const { error } = await supabase.from("follows").insert({ follower_id: followerId, following_id: followingId });
-    if (error && error.code !== "23505") throw error;
-  },
-
-  async unfollow(followerId: string, followingId: string): Promise<void> {
-    const { error } = await supabase
-      .from("follows")
-      .delete()
-      .eq("follower_id", followerId)
-      .eq("following_id", followingId);
-    if (error) throw error;
-  },
-
-  async getFollowingIds(userId: string): Promise<string[]> {
-    const { data, error } = await supabase.from("follows").select("following_id").eq("follower_id", userId);
-    if (error) throw error;
-    return (data ?? []).map((row) => row.following_id);
-  },
+const USERS="users", FOLLOWS="follows";
+const users=()=>storage.get<UserProfile[]>(USERS,seedUsers());
+const follows=()=>storage.get<Follow[]>(FOLLOWS,seedFollows());
+export const profileService={
+ async getProfile(userId:string){return users().find(u=>u.user_id===userId)||null;},
+ async ensureProfile(userId:string,username:string){const found=await this.getProfile(userId); if(found)return found; const profile={...users()[0],id:`profile-${userId}`,user_id:userId,username,batch:"",stream:"",state:"",lga:"",ppa:"",status:"serving" as const,bio:"",avatar_url:"",reg_number:"",follower_count:0,following_count:0}; storage.set(USERS,[...users(),profile]); return profile;},
+ async updateProfile(userId:string,updates:Partial<UserProfile>){const next=users().map(u=>u.user_id===userId?{...u,...updates,id:u.id,user_id:u.user_id}:u); storage.set(USERS,next); return next.find(u=>u.user_id===userId)!;},
+ async listUsers(){return users().sort((a,b)=>a.username.localeCompare(b.username));},
+ async follow(followerId:string,followingId:string){if(followerId===followingId)throw new Error("You cannot follow yourself."); const f=follows(); if(!f.some(x=>x.follower_id===followerId&&x.following_id===followingId))storage.set(FOLLOWS,[...f,{follower_id:followerId,following_id:followingId}]);},
+ async unfollow(followerId:string,followingId:string){storage.set(FOLLOWS,follows().filter(x=>!(x.follower_id===followerId&&x.following_id===followingId)));},
+ async getFollowingIds(userId:string){return follows().filter(x=>x.follower_id===userId).map(x=>x.following_id);},
 };
-
 export type { Follow };
