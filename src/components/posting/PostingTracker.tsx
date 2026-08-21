@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, CheckCircle, Circle, Clock, ChevronRight, Loader2, Save } from "lucide-react";
+import { MapPin, CheckCircle, Circle, Clock, ChevronRight, Loader2, Save, ExternalLink, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -10,13 +10,24 @@ import type { PostingProgress } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TimelineStep { id: string; label: string; status: "completed" | "current" | "pending"; date?: string; }
-const states = ["Lagos", "Abuja", "Kano", "Rivers", "Oyo", "Kaduna", "Enugu", "Delta", "Anambra", "Ogun"];
+
+const states = [
+  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara", "FCT",
+];
+
 const milestoneFields: { key: keyof Pick<PostingProgress, "registration_date" | "camp_start_date" | "ppa_assigned_date" | "cds_assigned_date" | "pop_date">; label: string }[] = [
   { key: "registration_date", label: "Online Registration" },
-  { key: "camp_start_date", label: "Orientation Camp" },
-  { key: "ppa_assigned_date", label: "PPA Posting" },
-  { key: "cds_assigned_date", label: "CDS Assignment" },
-  { key: "pop_date", label: "POP Ceremony" },
+  { key: "camp_start_date", label: "Orientation Course" },
+  { key: "ppa_assigned_date", label: "Primary Assignment" },
+  { key: "cds_assigned_date", label: "Community Development Service" },
+  { key: "pop_date", label: "Winding-up / Passing-out" },
+];
+
+const serviceStages = [
+  { id: "orientation", label: "Orientation Course", milestone: "camp_start_date" as const },
+  { id: "primary", label: "Primary Assignment", milestone: "ppa_assigned_date" as const },
+  { id: "cds", label: "Community Development Service", milestone: "cds_assigned_date" as const },
+  { id: "pop", label: "Winding-up / Passing-out", milestone: "pop_date" as const },
 ];
 
 export function PostingTracker() {
@@ -49,12 +60,20 @@ export function PostingTracker() {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   };
+
   const timeline = useMemo<TimelineStep[]>(() => {
-    const steps = milestoneFields.map((field) => ({ id: field.key, label: field.label, rawDate: milestones[field.key] }));
-    const nextPendingIndex = steps.findIndex((s) => !s.rawDate);
-    return steps.map((step, index) => { const status: TimelineStep["status"] = step.rawDate ? "completed" : nextPendingIndex === index ? "current" : "pending"; return { id: step.id, label: step.label, status, date: formatDate(step.rawDate) ?? (status !== "completed" ? "Awaiting update" : undefined) }; });
+    const nextPendingIndex = milestoneFields.findIndex((field) => !milestones[field.key]);
+    return milestoneFields.map((field, index) => {
+      const rawDate = milestones[field.key];
+      const status: TimelineStep["status"] = rawDate ? "completed" : nextPendingIndex === index ? "current" : "pending";
+      return { id: field.key, label: field.label, status, date: formatDate(rawDate) ?? (status !== "completed" ? "Awaiting update" : undefined) };
+    });
   }, [milestones]);
-  const currentStage = timeline.find((s) => s.status === "current")?.label ?? "All milestones completed";
+
+  const currentStage = useMemo(() => {
+    const nextIndex = serviceStages.findIndex((stage) => !milestones[stage.milestone]);
+    return serviceStages[nextIndex]?.label ?? "Service year completed";
+  }, [milestones]);
 
   const save = async () => {
     if (!user) return;
@@ -62,18 +81,18 @@ export function PostingTracker() {
     try { await postingService.save(user.id, { reg_number: regNumber.trim(), stream, state, ...milestones }); setIsTracking(true); setIsEditing(false); }
     finally { setIsSaving(false); }
   };
-  const handleStartTracking = () => void save();
 
   if (isLoading) return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+
   if (!isTracking || isEditing) return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
       <div className="flex items-center justify-between mb-6"><div><h2 className="text-2xl font-bold text-foreground">Posting Tracker</h2><p className="text-muted-foreground mb-1">Keep your NYSC journey up to date</p></div>{isTracking && <button onClick={() => setIsEditing(false)} className="text-sm text-primary font-medium">Cancel</button>}</div>
       <div className="space-y-4">
-        <div><label className="text-sm font-medium text-foreground mb-2 block">Registration Number</label><Input placeholder="e.g. NYSC/2024/123456" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} /></div>
+        <div><label className="text-sm font-medium text-foreground mb-2 block">Registration Number</label><Input placeholder="e.g. NYSC/2026/123456" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} /></div>
         <div><label className="text-sm font-medium text-foreground mb-2 block">Stream</label><Select value={stream} onValueChange={setStream}><SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger><SelectContent><SelectItem value="stream-1">Stream I</SelectItem><SelectItem value="stream-2">Stream II</SelectItem></SelectContent></Select></div>
         <div><label className="text-sm font-medium text-foreground mb-2 block">State of Deployment</label><Select value={state} onValueChange={setState}><SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger><SelectContent>{states.map((s) => <SelectItem key={s} value={s.toLowerCase()}>{s}</SelectItem>)}</SelectContent></Select></div>
-        <div className="pt-2"><p className="text-sm font-semibold mb-3">Milestone dates</p><div className="space-y-3">{milestoneFields.map((field) => <div key={field.key}><label className="text-sm text-muted-foreground mb-1 block">{field.label}</label><Input type="date" value={milestones[field.key] ?? ""} onChange={(e) => setMilestones((current) => ({ ...current, [field.key]: e.target.value || null }))} /></div>)}</div></div>
-        <Button className="w-full mt-4" size="lg" onClick={handleStartTracking} disabled={isSaving}>{isSaving ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}{isSaving ? "Saving..." : isTracking ? "Save changes" : "Start Tracking"}</Button>
+        <div className="pt-2"><p className="text-sm font-semibold mb-3">Your milestone dates</p><p className="text-xs text-muted-foreground mb-3">These are your personal records. They are not official NYSC dates unless you verify them against your Call-up Letter or NYSC channels.</p><div className="space-y-3">{milestoneFields.map((field) => <div key={field.key}><label className="text-sm text-muted-foreground mb-1 block">{field.label}</label><Input type="date" value={milestones[field.key] ?? ""} onChange={(e) => setMilestones((current) => ({ ...current, [field.key]: e.target.value || null }))} /></div>)}</div></div>
+        <Button className="w-full mt-4" size="lg" onClick={() => void save()} disabled={isSaving}>{isSaving ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}{isSaving ? "Saving..." : isTracking ? "Save changes" : "Start Tracking"}</Button>
       </div>
     </div>
   );
@@ -81,8 +100,13 @@ export function PostingTracker() {
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
       {!isProfileComplete && <Alert className="mb-5 border-warning/40 bg-warning/10"><MapPin className="h-4 w-4" /><AlertTitle>Profile required for accurate posting timeline</AlertTitle><AlertDescription>Add your {missingRequiredFields.join(", ")} in Profile before using posting timeline calculations.</AlertDescription></Alert>}
-      <div className="flex items-center justify-between mb-6"><div><h2 className="text-2xl font-bold text-foreground">Your Journey</h2><p className="text-muted-foreground text-sm">{state || "State not selected"} • {stream || "Stream not selected"}</p></div><button onClick={() => setIsEditing(true)} className="text-sm text-primary font-medium">Edit</button></div>
-      <div className="bg-primary rounded-2xl p-5 mb-8 shadow-card"><div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 bg-primary-foreground/20 rounded-xl flex items-center justify-center"><Clock size={20} className="text-primary-foreground" /></div><div><p className="text-primary-foreground/70 text-xs">Current Stage</p><p className="text-primary-foreground font-semibold">{currentStage}</p></div></div><div className="flex items-center justify-between"><p className="text-primary-foreground/80 text-sm">Milestones update as you save dates</p><div className="bg-primary-foreground/20 px-3 py-1 rounded-full"><span className="text-primary-foreground text-xs font-medium">In Progress</span></div></div></div>
+      <div className="flex items-center justify-between mb-6"><div><h2 className="text-2xl font-bold text-foreground">Your NYSC Journey</h2><p className="text-muted-foreground text-sm">{state || "State not selected"} • {stream || "Stream not selected"}</p></div><button onClick={() => setIsEditing(true)} className="text-sm text-primary font-medium">Edit</button></div>
+
+      <div className="bg-primary rounded-2xl p-5 mb-6 shadow-card"><div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 bg-primary-foreground/20 rounded-xl flex items-center justify-center"><Clock size={20} className="text-primary-foreground" /></div><div><p className="text-primary-foreground/70 text-xs">Current Service Stage</p><p className="text-primary-foreground font-semibold">{currentStage}</p></div></div><p className="text-primary-foreground/80 text-sm">Stage status is based on the dates you record.</p></div>
+
+      <div className="bg-card border border-border rounded-2xl p-4 mb-6"><div className="flex items-center gap-2 mb-2"><ShieldCheck size={16} className="text-success" /><p className="text-sm font-semibold text-foreground">Official NYSC guidance</p></div><p className="text-xs text-muted-foreground mb-3">NYSC identifies Orientation, Primary Assignment, CDS and Winding-up/Passing-out as the four service-year segments. Verify changing dates through NYSC before relying on them.</p><a href="https://www.nysc.gov.ng/serviceyear.html" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">View service-year guidance <ExternalLink size={13} /></a><a href="https://www.nysc.gov.ng/corpmob.html" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary ml-4">Posting & relocation <ExternalLink size={13} /></a></div>
+
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Your milestones</h3>
       <div className="space-y-0">{timeline.map((step, index) => <div key={step.id} className="flex gap-4"><div className="flex flex-col items-center"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${step.status === "completed" ? "bg-success text-success-foreground" : step.status === "current" ? "bg-primary text-primary-foreground ring-4 ring-primary/20" : "bg-muted text-muted-foreground"}`}>{step.status === "completed" ? <CheckCircle size={18} /> : step.status === "current" ? <Clock size={18} /> : <Circle size={18} />}</div>{index < timeline.length - 1 && <div className={`w-0.5 h-12 ${step.status === "completed" ? "bg-success" : "bg-border"}`} />}</div><div className="flex-1 pb-8"><div className="flex items-center justify-between"><div><p className={`font-medium ${step.status === "pending" ? "text-muted-foreground" : "text-foreground"}`}>{step.label}</p>{step.date && <p className="text-xs text-muted-foreground mt-0.5">{step.date}</p>}</div>{step.status === "current" && <ChevronRight size={18} className="text-primary" />}</div></div></div>)}</div>
     </div>
   );
