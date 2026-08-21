@@ -1,89 +1,73 @@
-import { delay, ensureSeeded, storage } from "@/data/storage";
-import { DEMO_USER_ID, seedFollows, seedUsers } from "@/data/seed";
+import { supabase } from "@/lib/supabase";
 import type { Follow, UserProfile } from "@/types";
 
-const USERS_KEY = "users";
-const FOLLOWS_KEY = "follows";
-
-const readUsers = (): UserProfile[] => ensureSeeded(USERS_KEY, seedUsers);
-const writeUsers = (list: UserProfile[]) => storage.set(USERS_KEY, list);
-const readFollows = (): Follow[] => ensureSeeded(FOLLOWS_KEY, seedFollows);
-const writeFollows = (list: Follow[]) => storage.set(FOLLOWS_KEY, list);
-
-const withCounts = (user: UserProfile, follows: Follow[]): UserProfile => ({
-  ...user,
-  follower_count: follows.filter((f) => f.following_id === user.user_id).length,
-  following_count: follows.filter((f) => f.follower_id === user.user_id).length,
-});
+const mapProfile = (row: UserProfile): UserProfile => row;
 
 export const profileService = {
   async getProfile(userId: string): Promise<UserProfile | null> {
-    await delay();
-    const users = readUsers();
-    const follows = readFollows();
-    const user = users.find((u) => u.user_id === userId);
-    return user ? withCounts(user, follows) : null;
+    const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    return data ? mapProfile(data as UserProfile) : null;
   },
 
   async ensureProfile(userId: string, username: string): Promise<UserProfile> {
-    const users = readUsers();
-    const follows = readFollows();
-    const existing = users.find((u) => u.user_id === userId);
-    if (existing) return withCounts(existing, follows);
+    const existing = await this.getProfile(userId);
+    if (existing) return existing;
 
-    const created: UserProfile = {
-      id: `profile-${userId}`,
-      user_id: userId,
-      username,
-      batch: "2025 Batch B",
-      stream: "Stream I",
-      state: "",
-      lga: "",
-      ppa: "",
-      status: "serving",
-      bio: "",
-      avatar_url: "",
-      reg_number: "",
-      follower_count: 0,
-      following_count: 0,
-    };
-    writeUsers([...users, created]);
-    return created;
+    const { data, error } = await supabase
+      .from("profiles")
+      .insert({ user_id: userId, username })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return mapProfile(data as UserProfile);
   },
 
   async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    await delay();
-    const users = readUsers();
-    const idx = users.findIndex((u) => u.user_id === userId);
-    if (idx < 0) throw new Error("Profile not found");
-    users[idx] = { ...users[idx], ...updates };
-    writeUsers(users);
-    return withCounts(users[idx], readFollows());
+    const safeUpdates = { ...updates };
+    delete safeUpdates.id;
+    delete safeUpdates.user_id;
+    delete safeUpdates.follower_count;
+    delete safeUpdates.following_count;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(safeUpdates)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return mapProfile(data as UserProfile);
   },
 
   async listUsers(): Promise<UserProfile[]> {
-    await delay();
-    const follows = readFollows();
-    return readUsers().map((u) => withCounts(u, follows));
+    const { data, error } = await supabase.from("profiles").select("*").order("username");
+    if (error) throw error;
+    return (data ?? []) as UserProfile[];
   },
 
   async follow(followerId: string, followingId: string): Promise<void> {
-    await delay(80);
-    const follows = readFollows();
-    if (follows.some((f) => f.follower_id === followerId && f.following_id === followingId)) return;
-    writeFollows([...follows, { follower_id: followerId, following_id: followingId }]);
+    if (followerId === followingId) throw new Error("You cannot follow yourself.");
+    const { error } = await supabase.from("follows").insert({ follower_id: followerId, following_id: followingId });
+    if (error && error.code !== "23505") throw error;
   },
 
   async unfollow(followerId: string, followingId: string): Promise<void> {
-    await delay(80);
-    const follows = readFollows().filter((f) => !(f.follower_id === followerId && f.following_id === followingId));
-    writeFollows(follows);
+    const { error } = await supabase
+      .from("follows")
+      .delete()
+      .eq("follower_id", followerId)
+      .eq("following_id", followingId);
+    if (error) throw error;
   },
 
   async getFollowingIds(userId: string): Promise<string[]> {
-    await delay(50);
-    return readFollows().filter((f) => f.follower_id === userId).map((f) => f.following_id);
+    const { data, error } = await supabase.from("follows").select("following_id").eq("follower_id", userId);
+    if (error) throw error;
+    return (data ?? []).map((row) => row.following_id);
   },
 };
 
-export { DEMO_USER_ID };
+export type { Follow };
