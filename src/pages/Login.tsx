@@ -27,16 +27,25 @@ export default function Login() {
     setError("");
     setIsSubmitting(true);
 
-    const result = await login(email.trim(), password);
-    
-    if (result.success) {
-      toast({ title: "Welcome back!", description: "You have successfully logged in." });
-      navigate("/");
-    } else {
-      setError(result.error || "Login failed");
+    try {
+      const result = await login(email.trim(), password);
+
+      if (result.success) {
+        toast({ title: "Welcome back!", description: "You have successfully logged in." });
+        navigate("/");
+      } else {
+        setError(result.error || "Login failed");
+      }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
   };
 
   return (

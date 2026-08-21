@@ -4,7 +4,7 @@ import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+import { PASSWORD_REQUIREMENTS, useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Signup() {
@@ -24,35 +24,38 @@ export default function Signup() {
     if (isAuthenticated) navigate("/", { replace: true });
   }, [isAuthenticated, navigate]);
 
-  const passwordRequirements = [
-    { label: "At least 6 characters", met: password.length >= 6 },
-    { label: "Contains a number", met: /\d/.test(password) },
-    { label: "Contains a letter", met: /[a-zA-Z]/.test(password) },
-  ];
+  const passwordRequirements = PASSWORD_REQUIREMENTS.map((requirement) => ({
+    label: requirement.label,
+    met: requirement.test(password),
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsSubmitting(true);
 
-    const result = await signup(email.trim(), password, confirmPassword);
-    
-    if (result.success) {
-      if (result.message) {
-        setVerificationSentTo(email.trim().toLowerCase());
-      }
-      toast({
-        title: "Account created!",
-        description: result.message ?? "Welcome to NYSC Buddy. Let's get you started.",
-      });
-      if (!result.message) {
+    try {
+      const result = await signup(email.trim(), password, confirmPassword);
+
+      if (result.success) {
+        toast({
+          title: "Account created!",
+          description: "Welcome to NYSC Buddy. Let's get you started.",
+        });
         navigate("/");
+      } else {
+        setError(result.error || "Signup failed");
       }
-    } else {
-      setError(result.error || "Signup failed");
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
   };
 
   if (verificationSentTo) {

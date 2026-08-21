@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, Users, MessageSquare, Megaphone, Settings, BarChart3, LogOut, Menu, X, Flag, CheckCircle, Clock, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, Users, MessageSquare, Megaphone, Settings, BarChart3, LogOut, Menu, X, Flag, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { adminService } from "@/services/admin.service";
+import { forumService } from "@/services/forum.service";
 import { useToast } from "@/hooks/use-toast";
+import type { Announcement, PostReport } from "@/types";
 
 type AdminTab = "overview" | "users" | "posts" | "announcements" | "settings";
 
@@ -20,6 +22,8 @@ const sidebarItems = [
   { id: "settings" as const, label: "Settings", icon: Settings },
 ];
 
+type ReportRow = PostReport & { post_content?: string };
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,63 +31,44 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, reportedPosts: 0 });
-  const [reportedPosts, setReportedPosts] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalUsers: 0, totalPosts: 0, reportedPosts: 0, announcements: 0 });
+  const [reportedPosts, setReportedPosts] = useState<ReportRow[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [announcementTitle, setAnnouncementTitle] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      const [{ count: userCount }, { count: postCount }, { count: reportCount }] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("forum_posts").select("*", { count: "exact", head: true }).eq("is_deleted", false),
-        supabase.from("post_reports").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      ]);
-      setStats({ totalUsers: userCount || 0, totalPosts: postCount || 0, reportedPosts: reportCount || 0 });
-    };
+  const refresh = async () => {
+    const [s, r, a] = await Promise.all([adminService.getStats(), forumService.listReports(), adminService.listAnnouncements()]);
+    setStats(s);
+    setReportedPosts(r);
+    setAnnouncements(a);
+  };
 
-    const fetchReports = async () => {
-      const { data } = await supabase
-        .from("post_reports")
-        .select("*, forum_posts(content, user_id)")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
-      setReportedPosts(data || []);
-    };
-
-    fetchStats();
-    fetchReports();
-  }, []);
+  useEffect(() => { refresh(); }, []);
 
   const handleLogout = async () => { await logout(); navigate("/"); };
 
-  const handleApprovePost = async (reportId: string) => {
-    await supabase.from("post_reports").update({ status: "dismissed" }).eq("id", reportId);
+  const handleDismissReport = async (reportId: string) => {
+    await forumService.resolveReport(reportId, "dismissed");
     setReportedPosts((prev) => prev.filter((r) => r.id !== reportId));
     toast({ title: "Report dismissed" });
+    refresh();
   };
 
   const handleRemovePost = async (reportId: string, postId: string) => {
-    await supabase.from("forum_posts").update({ is_deleted: true }).eq("id", postId);
-    await supabase.from("post_reports").update({ status: "reviewed" }).eq("id", reportId);
+    await forumService.resolveReport(reportId, "reviewed", { removePostId: postId });
     setReportedPosts((prev) => prev.filter((r) => r.id !== reportId));
     toast({ title: "Post removed" });
+    refresh();
   };
 
   const handleCreateAnnouncement = async () => {
     if (!announcementTitle.trim() || !announcementContent.trim() || !user) return;
-    const { error } = await supabase.from("announcements").insert({
-      title: announcementTitle.trim(),
-      content: announcementContent.trim(),
-      created_by: user.id,
-    });
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Announcement created!" });
-      setAnnouncementTitle("");
-      setAnnouncementContent("");
-    }
+    await adminService.createAnnouncement({ title: announcementTitle, content: announcementContent, created_by: user.id });
+    toast({ title: "Announcement created!" });
+    setAnnouncementTitle("");
+    setAnnouncementContent("");
+    refresh();
   };
 
   const renderContent = () => {
@@ -91,11 +76,16 @@ export default function AdminDashboard() {
       case "overview":
         return (
           <div className="space-y-6">
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>Prototype admin panel — all data is local to this browser.</span>
+            </div>
             <h2 className="text-2xl font-bold text-foreground">Dashboard Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle><Users size={18} className="text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalUsers}</div></CardContent></Card>
               <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Posts</CardTitle><MessageSquare size={18} className="text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalPosts}</div></CardContent></Card>
               <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Reported</CardTitle><Flag size={18} className="text-danger" /></CardHeader><CardContent><div className="text-2xl font-bold text-danger">{stats.reportedPosts}</div></CardContent></Card>
+              <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Announcements</CardTitle><Megaphone size={18} className="text-primary" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.announcements}</div></CardContent></Card>
             </div>
           </div>
         );
@@ -113,11 +103,11 @@ export default function AdminDashboard() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">Pending</span>
-                          <p className="text-sm text-foreground mt-2">{report.forum_posts?.content || "Post content unavailable"}</p>
+                          <p className="text-sm text-foreground mt-2">{report.post_content || "Post content unavailable"}</p>
                           <p className="text-xs text-muted-foreground mt-1">Reason: {report.reason}</p>
                         </div>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="text-success border-success hover:bg-success/10" onClick={() => handleApprovePost(report.id)}>
+                          <Button size="sm" variant="outline" className="text-success border-success hover:bg-success/10" onClick={() => handleDismissReport(report.id)}>
                             <CheckCircle size={14} className="mr-1" /> Dismiss
                           </Button>
                           <Button size="sm" variant="outline" className="text-danger border-danger hover:bg-danger/10" onClick={() => handleRemovePost(report.id, report.post_id)}>
@@ -145,6 +135,21 @@ export default function AdminDashboard() {
                 </Button>
               </CardContent>
             </Card>
+
+            {announcements.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Published</h3>
+                {announcements.map((a) => (
+                  <Card key={a.id}>
+                    <CardContent className="p-4">
+                      <p className="font-semibold text-foreground">{a.title}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{a.content}</p>
+                      <p className="text-xs text-muted-foreground mt-2">{new Date(a.created_at).toLocaleDateString()}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         );
       default:
