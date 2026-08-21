@@ -1,5 +1,6 @@
 import { MapPin, Wallet, CheckSquare, MessageCircle, Sparkles } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
+import { OfficialUpdates } from "./OfficialUpdates";
 import type { TabType } from "../layout/BottomNav";
 import { useActiveBatch } from "@/hooks/useActiveBatch";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
@@ -45,6 +46,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
           </p>
         </div>
       </section>
+
+      <OfficialUpdates />
 
       {/* Feature Cards */}
       <section className="space-y-4">
