@@ -1,21 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Bell, CheckCircle, Clock, Megaphone, Wallet, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { notificationsService } from "@/services/notifications.service";
+import type { AppNotification } from "@/types";
 
-interface Notification {
-  id: string;
-  type: "clearance" | "allowance" | "announcement" | "general";
-  title: string;
-  message: string;
-  created_at: string;
-  read: boolean;
-}
-
-const getNotificationIcon = (type: Notification["type"]) => {
+const getNotificationIcon = (type: AppNotification["type"]) => {
   switch (type) {
     case "clearance": return <CheckCircle size={16} className="text-success" />;
     case "allowance": return <Wallet size={16} className="text-warning" />;
@@ -35,47 +27,31 @@ const timeAgo = (dateStr: string) => {
 
 export function NotificationsDropdown() {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!user) return;
-    const fetchNotifications = async () => {
-      const { data } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (data) setNotifications(data as Notification[]);
-    };
-    fetchNotifications();
-
-    // Subscribe to realtime
-    const channel = supabase
-      .channel("notifications")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        (payload) => { setNotifications((prev) => [payload.new as Notification, ...prev]); }
-      ).subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    setNotifications(await notificationsService.list(user.id));
   }, [user]);
+
+  useEffect(() => { refresh(); }, [refresh]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAsRead = async (id: string) => {
-    await supabase.from("notifications").update({ read: true }).eq("id", id);
+    await notificationsService.markRead(id);
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const markAllAsRead = async () => {
     if (!user) return;
-    await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+    await notificationsService.markAllRead(user.id);
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const removeNotification = async (id: string) => {
-    await supabase.from("notifications").delete().eq("id", id);
+    await notificationsService.remove(id);
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 

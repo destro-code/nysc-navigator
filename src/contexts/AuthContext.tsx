@@ -1,14 +1,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
-import { normalizeApiError } from "@/lib/api-error";
+import { authService } from "@/services/auth.service";
+import { supabase } from "@/lib/supabase";
+import type { Session } from "@/types";
 
 export interface AuthUser {
   id: string;
   email: string;
+  username: string;
 }
 
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_LETTER_REGEX = /[a-zA-Z]/;
 const PASSWORD_NUMBER_REGEX = /\d/;
 
@@ -41,132 +42,94 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const toUser = (session: Session): AuthUser => ({ id: session.id, email: session.email, username: session.username });
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const checkAdminRole = async (userId: string) => {
-    const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
-    if (error) throw error;
-    setIsAdmin(!!data);
+  const applySession = (session: Session | null) => {
+    if (session) {
+      setUser(toUser(session));
+      setIsAdmin(session.isAdmin);
+    } else {
+      setUser(null);
+      setIsAdmin(false);
+    }
   };
 
-  const mapUser = (supaUser: User): AuthUser => ({
-    id: supaUser.id,
-    email: supaUser.email || "",
-  });
-
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setError(null);
-        try {
-          if (session?.user) {
-            setUser(mapUser(session.user));
-            setTimeout(() => {
-              void checkAdminRole(session.user.id).catch((err) => {
-                setError(normalizeApiError(err, "Unable to verify admin role."));
-              });
-            }, 0);
-          } else {
-            setUser(null);
-            setIsAdmin(false);
-          }
-        } catch (err) {
-          setError(normalizeApiError(err, "Unable to restore auth state."));
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    );
+    let mounted = true;
 
-    supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
-      setError(null);
+    const restoreSession = async () => {
       try {
-        if (sessionError) throw sessionError;
-        if (session?.user) {
-          setUser(mapUser(session.user));
-          await checkAdminRole(session.user.id);
-        }
-      } catch (err) {
-        setError(normalizeApiError(err, "Unable to initialize auth session."));
+        const session = await authService.getSession();
+        if (mounted) applySession(session);
+      } catch {
+        if (mounted) setError("Unable to restore auth state.");
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
+    };
+
+    void restoreSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async () => {
+      const session = await authService.getSession();
+      if (mounted) applySession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) return { success: false, error: "Please enter both email and password" };
-
-    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    setError(null);
+    const result = await authService.login(email, password);
+    if (result.success) {
+      applySession(result.session);
+      return { success: true as const };
+    }
+    return { success: false as const, error: result.error };
   };
 
   const signup = async (email: string, password: string, confirmPassword: string) => {
+    setError(null);
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !password || !confirmPassword) return { success: false, error: "Please fill in all fields" };
     if (password !== confirmPassword) return { success: false, error: "Passwords do not match" };
     const passwordValidationError = validatePassword(password);
     if (passwordValidationError) return { success: false, error: passwordValidationError };
 
-    const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password });
-    if (error) {
-      if (error.message.toLowerCase().includes("already registered")) {
-        return { success: false, error: "An account with this email already exists. Please log in instead." };
-      }
-      return { success: false, error: error.message };
+    const result = await authService.signup(normalizedEmail, password);
+    if (result.success) {
+      applySession(result.session);
+      return { success: true as const };
     }
-
-    if (!data.session) {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
-
-      if (loginError) {
-        const normalizedLoginError = loginError.message.toLowerCase();
-        if (normalizedLoginError.includes("email not confirmed")) {
-          return {
-            success: false,
-            error:
-              "Email confirmation is still enabled for this Supabase project. Disable it in Auth settings (Email provider) to allow instant login after signup.",
-          };
-        }
-
-        return { success: false, error: loginError.message };
-      }
-    }
-
-    return { success: true };
+    return { success: false as const, error: result.error };
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    await authService.logout();
+    applySession(null);
   };
 
   const forgotPassword = async (email: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return { success: false, error: "Please enter your email" };
-    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    const result = await authService.forgotPassword(email);
+    if (result.success) return { success: true as const };
+    return { success: false as const, error: result.error };
   };
 
   const resetPassword = async (newPassword: string) => {
     const passwordValidationError = validatePassword(newPassword);
     if (passwordValidationError) return { success: false, error: passwordValidationError };
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    const result = await authService.resetPassword(newPassword);
+    if (result.success) return { success: true as const };
+    return { success: false as const, error: result.error };
   };
 
   return (
@@ -180,6 +143,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }

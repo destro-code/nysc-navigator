@@ -1,28 +1,19 @@
-import { useState, useEffect } from "react";
-import { Wallet, CheckCircle, XCircle, TrendingUp, MessageSquare, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Wallet, CheckCircle, XCircle, TrendingUp, MessageSquare, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { allowanceService } from "@/services/allowance.service";
+import { forumService } from "@/services/forum.service";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeApiError } from "@/lib/api-error";
 import { NetworkError } from "@/components/ui/network-error";
+import type { AllowanceRecord } from "@/types";
 
 const ALLOWANCE_AMOUNT = 77000;
-
-const SERVICE_MONTHS = [
-  "November", "December", "January", "February", "March",
-  "April", "May", "June", "July", "August", "September", "October"
-];
-
-interface AllowanceRecord {
-  id?: string;
-  month: string;
-  year: number;
-  status: "paid" | "pending" | "late";
-  amount: number;
-  notes: string;
-}
 
 export function AllowanceTracker() {
   const { user } = useAuth();
@@ -33,121 +24,98 @@ export function AllowanceTracker() {
   const [rant, setRant] = useState("");
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [isPostingRant, setIsPostingRant] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newMonth, setNewMonth] = useState("");
+  const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
 
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const { data, error } = await supabase
-        .from("allowance_records")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("year", { ascending: true });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setRecords(data.map((r) => ({
-          id: r.id,
-          month: r.month,
-          year: r.year,
-          status: r.status as AllowanceRecord["status"],
-          amount: r.amount,
-          notes: r.notes || "",
-        })));
-      } else {
-        // Initialize default records
+      const data = await allowanceService.list(user.id);
+      if (data.length === 0) {
+        // Seed a few pending entries for the new user's demo
         const currentYear = new Date().getFullYear();
-        const defaults = SERVICE_MONTHS.slice(0, 4).map((month) => ({
-          month,
-          year: currentYear,
-          status: "pending" as const,
-          amount: ALLOWANCE_AMOUNT,
-          notes: "",
-        }));
-        setRecords(defaults);
+        const months = ["November", "December", "January", "February"];
+        await Promise.all(months.map((m) => allowanceService.add(user.id, m, currentYear, ALLOWANCE_AMOUNT)));
+        setRecords(await allowanceService.list(user.id));
+      } else {
+        setRecords(data);
       }
     } catch (error) {
       setErrorMessage(normalizeApiError(error, "Unable to load allowance records right now."));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  useEffect(() => { fetchRecords(); }, [user]);
+  useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  const toggleStatus = async (index: number) => {
+  const toggleStatus = async (record: AllowanceRecord) => {
     if (!user) return;
-
-    const record = records[index];
-    const recordKey = `${record.month}-${record.year}`;
-
+    const recordKey = record.id;
     if (savingKeys.has(recordKey)) return;
-
     const newStatus = record.status === "paid" ? "pending" : "paid";
-    const previous = [...records];
-    const updated = [...records];
-    updated[index] = { ...record, status: newStatus };
-    setRecords(updated);
+    const previous = records;
+    setRecords((prev) => prev.map((r) => (r.id === record.id ? { ...r, status: newStatus } : r)));
     setSavingKeys((prev) => new Set(prev).add(recordKey));
-
     try {
-      const { error } = await supabase.from("allowance_records").upsert({
-        user_id: user.id,
-        month: record.month,
-        year: record.year,
-        amount: record.amount,
-        status: newStatus,
-        notes: record.notes,
-      }, { onConflict: "user_id,month,year" });
-
-      if (error) {
-        throw error;
-      }
+      await allowanceService.setStatus(record.id, newStatus);
     } catch (error) {
       setRecords(previous);
-      console.error("Failed to toggle allowance status", {
-        error,
-        userId: user.id,
-        month: record.month,
-        year: record.year,
-      });
-      toast({
-        variant: "destructive",
-        title: "Could not save payment status",
-        description: "We restored the previous value. Please try again.",
-      });
+      toast({ variant: "destructive", title: "Could not save payment status", description: "We restored the previous value. Please try again." });
     } finally {
-      setSavingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(recordKey);
-        return next;
-      });
+      setSavingKeys((prev) => { const next = new Set(prev); next.delete(recordKey); return next; });
     }
+  };
+
+  const handleAdd = async () => {
+    if (!user || !newMonth.trim()) return;
+    const yearNum = parseInt(newYear, 10);
+    if (Number.isNaN(yearNum)) return;
+    await allowanceService.add(user.id, newMonth.trim(), yearNum, ALLOWANCE_AMOUNT);
+    setNewMonth("");
+    setAddOpen(false);
+    toast({ title: "Entry added", description: `${newMonth.trim()} ${yearNum} allowance tracked.` });
+    fetchRecords();
   };
 
   const totalPaid = records.filter((m) => m.status === "paid").reduce((a, b) => a + b.amount, 0);
   const totalExpected = records.length * ALLOWANCE_AMOUNT;
 
-  if (isLoading) {
-    return (
-      <div className="px-4 py-6 pb-24 flex items-center justify-center">
-        <Loader2 className="animate-spin text-primary" size={32} />
-      </div>
-    );
-  }
-  if (errorMessage) {
-    return <NetworkError message={errorMessage} onRetry={fetchRecords} />;
-  }
+  if (isLoading) return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  if (errorMessage) return <NetworkError message={errorMessage} onRetry={fetchRecords} />;
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
-      <h2 className="text-2xl font-bold text-foreground mb-2">Allawee Tracker</h2>
-      <p className="text-muted-foreground mb-6">Track your monthly ₦{ALLOWANCE_AMOUNT.toLocaleString()} allowance</p>
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Allawee Tracker</h2>
+          <p className="text-muted-foreground">Track your monthly ₦{ALLOWANCE_AMOUNT.toLocaleString()} allowance</p>
+        </div>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="rounded-full mt-1"><Plus size={16} className="mr-1" /> Add</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Add allowance entry</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="month">Month</Label>
+                <Input id="month" placeholder="e.g. March" value={newMonth} onChange={(e) => setNewMonth(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="year">Year</Label>
+                <Input id="year" type="number" value={newYear} onChange={(e) => setNewYear(e.target.value)} />
+              </div>
+              <Button className="w-full" onClick={handleAdd} disabled={!newMonth.trim()}>Add entry</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
 
-      {/* Summary Card */}
-      <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-soft">
+      <div className="bg-card border border-border rounded-2xl p-5 my-6 shadow-soft">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">
             <Wallet size={24} className="text-primary" />
@@ -165,21 +133,14 @@ export function AllowanceTracker() {
         </div>
       </div>
 
-      {/* Monthly History */}
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Payment History</h3>
         <div className="space-y-3">
-          {records.map((record, index) => {
-            const recordKey = `${record.month}-${record.year}`;
-            const isSavingRecord = savingKeys.has(recordKey);
-
+          {records.map((record) => {
+            const isSavingRecord = savingKeys.has(record.id);
             return (
-              <button
-                key={recordKey}
-                onClick={() => toggleStatus(index)}
-                disabled={isSavingRecord}
-                className={`w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl transition-all ${record.status === "paid" ? "border-success/30" : ""} ${isSavingRecord ? "opacity-70 cursor-not-allowed" : ""}`}
-              >
+              <button key={record.id} onClick={() => toggleStatus(record)} disabled={isSavingRecord}
+                className={`w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl transition-all ${record.status === "paid" ? "border-success/30" : ""} ${isSavingRecord ? "opacity-70 cursor-not-allowed" : ""}`}>
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                     record.status === "paid" ? "bg-success/10 text-success" : record.status === "late" ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
@@ -187,7 +148,7 @@ export function AllowanceTracker() {
                     {record.status === "paid" ? <CheckCircle size={20} /> : <XCircle size={20} />}
                   </div>
                   <div className="text-left">
-                    <p className="font-medium text-foreground">{record.month}</p>
+                    <p className="font-medium text-foreground">{record.month} {record.year}</p>
                     <p className="text-xs text-muted-foreground">₦{record.amount.toLocaleString()}</p>
                   </div>
                 </div>
@@ -202,7 +163,6 @@ export function AllowanceTracker() {
         </div>
       </div>
 
-      {/* Rant Box */}
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
           <MessageSquare size={16} /> Rant Box
@@ -210,35 +170,19 @@ export function AllowanceTracker() {
         <Textarea placeholder="Oga NYSC, where is my money? 😤" value={rant} onChange={(e) => setRant(e.target.value)} className="min-h-[100px] mb-3" />
         <Button variant="outline" className="w-full" disabled={isPostingRant} onClick={async () => {
           if (!rant.trim() || !user) return;
-
           const trimmedRant = rant.trim();
           setRant("");
           setIsPostingRant(true);
-
           try {
-            const { error } = await supabase.from("forum_posts").insert({ user_id: user.id, content: trimmedRant, flair: "stuck" });
-            if (error) {
-              throw error;
-            }
-
+            await forumService.createPost({ user_id: user.id, content: trimmedRant, flair: "stuck" });
             toast({ title: "Posted!", description: "Your rant has been posted to the forum." });
-          } catch (error) {
+          } catch {
             setRant(trimmedRant);
-            console.error("Failed to post rant", {
-              error,
-              userId: user.id,
-              month: new Date().toLocaleString("default", { month: "long" }),
-              year: new Date().getFullYear(),
-            });
-            toast({
-              variant: "destructive",
-              title: "Could not post rant",
-              description: "Your draft was restored. Please try again.",
-            });
+            toast({ variant: "destructive", title: "Could not post rant", description: "Your draft was restored. Please try again." });
           } finally {
             setIsPostingRant(false);
           }
-        }}>Post Anonymously</Button>
+        }}>Post to Forum</Button>
       </div>
     </div>
   );

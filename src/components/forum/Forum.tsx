@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MessageCircle, ThumbsUp, ThumbsDown, Plus, Clock, CheckCircle, AlertTriangle, Users, MoreHorizontal, Edit, Trash2, Flag, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@/contexts/UserContext";
@@ -9,60 +9,34 @@ import { DeletePostDialog } from "./DeletePostDialog";
 import { ReportPostDialog } from "./ReportPostDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PostSkeleton } from "@/components/ui/loading-skeleton";
-import { supabase } from "@/integrations/supabase/client";
+import { forumService } from "@/services/forum.service";
 import { normalizeApiError } from "@/lib/api-error";
 import { NetworkError } from "@/components/ui/network-error";
+import type { ForumPost, VoteType } from "@/types";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface ForumPost {
-  id: string;
-  content: string;
-  user_id: string;
-  author_username: string;
-  author_status: string;
-  created_at: string;
-  upvotes: number;
-  downvotes: number;
-  comments_count: number;
-  flair: "cleared" | "stuck" | "question" | "info";
-  user_vote?: "up" | "down" | null;
-}
 
 const getFlairStyle = (flair: ForumPost["flair"]) => {
   switch (flair) {
-    case "cleared":
-      return { bg: "bg-success/10", text: "text-success", icon: <CheckCircle size={12} /> };
-    case "stuck":
-      return { bg: "bg-danger/10", text: "text-danger", icon: <AlertTriangle size={12} /> };
-    case "question":
-      return { bg: "bg-primary/10", text: "text-primary", icon: <MessageCircle size={12} /> };
-    case "info":
-      return { bg: "bg-warning/10", text: "text-warning", icon: <Clock size={12} /> };
+    case "cleared": return { bg: "bg-success/10", text: "text-success", icon: <CheckCircle size={12} /> };
+    case "stuck": return { bg: "bg-danger/10", text: "text-danger", icon: <AlertTriangle size={12} /> };
+    case "question": return { bg: "bg-primary/10", text: "text-primary", icon: <MessageCircle size={12} /> };
+    case "info": return { bg: "bg-warning/10", text: "text-warning", icon: <Clock size={12} /> };
   }
 };
 
 const POSTS_PER_PAGE = 10;
 const FILTER_TO_FLAIR_MAP = {
-  All: "all",
-  Questions: "question",
-  Cleared: "cleared",
-  Stuck: "stuck",
-  Info: "info",
+  All: "all", Questions: "question", Cleared: "cleared", Stuck: "stuck", Info: "info",
 } as const;
-
 type FilterLabel = keyof typeof FILTER_TO_FLAIR_MAP;
 
 export function Forum() {
   const { user } = useAuth();
   const { isFollowing, followingIds } = useUser();
   const [posts, setPosts] = useState<ForumPost[]>([]);
-  const [userVotes, setUserVotes] = useState<Record<string, "up" | "down">>({});
+  const [userVotes, setUserVotes] = useState<Record<string, VoteType>>({});
   const [activeFilter, setActiveFilter] = useState<FilterLabel>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -71,110 +45,53 @@ export function Forum() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [pendingVotes, setPendingVotes] = useState<Record<string, "up" | "down">>({});
+  const [pendingVotes, setPendingVotes] = useState<Record<string, VoteType>>({});
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const { data: postsData, error: postsError } = await supabase
-        .from("forum_posts")
-        .select("*")
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: false });
-
-      if (postsError) throw postsError;
-      if (!postsData) return;
-
-      const userIds = [...new Set(postsData.map((p) => p.user_id))];
-      const { data: profiles, error: profilesError } = await supabase.from("profiles").select("user_id, username, status").in("user_id", userIds);
-      if (profilesError) throw profilesError;
-      const profileMap = new Map(profiles?.map((p) => [p.user_id, p]) || []);
-
-      if (user) {
-        const { data: votes, error: votesError } = await supabase.from("post_votes").select("post_id, vote_type").eq("user_id", user.id);
-        if (votesError) throw votesError;
-        const voteMap: Record<string, "up" | "down"> = {};
-        votes?.forEach((v) => { voteMap[v.post_id] = v.vote_type as "up" | "down"; });
-        setUserVotes(voteMap);
-      }
-
-      setPosts(
-        postsData.map((p) => {
-          const profile = profileMap.get(p.user_id);
-          return {
-            id: p.id,
-            content: p.content,
-            user_id: p.user_id,
-            author_username: profile?.username || "Corper",
-            author_status: profile?.status || "serving",
-            created_at: p.created_at,
-            upvotes: p.upvotes,
-            downvotes: p.downvotes,
-            comments_count: p.comments_count,
-            flair: p.flair as ForumPost["flair"],
-          };
-        })
-      );
+      const [postsData, votes] = await Promise.all([
+        forumService.listPosts(),
+        user ? forumService.getUserVotes(user.id) : Promise.resolve({} as Record<string, VoteType>),
+      ]);
+      setPosts(postsData);
+      setUserVotes(votes);
     } catch (error) {
       setErrorMessage(normalizeApiError(error, "Unable to load forum posts right now."));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  useEffect(() => { fetchPosts(); }, [user]);
+  useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
-  const handleVote = async (postId: string, type: "up" | "down") => {
+  const handleVote = async (postId: string, type: VoteType) => {
     if (!user || pendingVotes[postId]) return;
-
     setPendingVotes((prev) => ({ ...prev, [postId]: type }));
-
-    const { data, error } = await supabase.rpc("transition_post_vote", {
-      p_post_id: postId,
-      p_vote_type: type,
-    });
-
-    setPendingVotes((prev) => {
-      const next = { ...prev };
-      delete next[postId];
-      return next;
-    });
-
-    if (error || !data?.[0]) return;
-
-    const result = data[0] as { upvotes: number; downvotes: number; user_vote: "up" | "down" | null };
-
-    setPosts((prev) => prev.map((post) => post.id === postId ? { ...post, upvotes: result.upvotes, downvotes: result.downvotes } : post));
-    setUserVotes((prev) => {
-      const next = { ...prev };
-      if (result.user_vote) {
-        next[postId] = result.user_vote;
-      } else {
-        delete next[postId];
-      }
-      return next;
-    });
+    try {
+      const result = await forumService.vote(user.id, postId, type);
+      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes } : p)));
+      setUserVotes((prev) => {
+        const next = { ...prev };
+        if (result.user_vote) next[postId] = result.user_vote; else delete next[postId];
+        return next;
+      });
+    } finally {
+      setPendingVotes((prev) => { const next = { ...prev }; delete next[postId]; return next; });
+    }
   };
 
-  // Sort: following first
-  const sortedPosts = [...posts].sort((a, b) => {
-    const aFollow = isFollowing(a.user_id) ? -1 : 0;
-    const bFollow = isFollowing(b.user_id) ? -1 : 0;
-    return aFollow - bFollow;
-  });
-
+  const sortedPosts = [...posts].sort((a, b) => (isFollowing(b.user_id) ? 1 : 0) - (isFollowing(a.user_id) ? 1 : 0));
   const filteredPosts = sortedPosts.filter((post) => {
-    const mappedFlair = FILTER_TO_FLAIR_MAP[activeFilter];
-    if (mappedFlair === "all") return true;
-    return post.flair === mappedFlair;
+    const mapped = FILTER_TO_FLAIR_MAP[activeFilter];
+    return mapped === "all" || post.flair === mapped;
   });
 
   const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
   const paginatedPosts = filteredPosts.slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE);
 
   const getInitials = (name: string) => name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-
   const timeAgo = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
@@ -229,7 +146,6 @@ export function Forum() {
               const userVote = userVotes[post.id];
               const isFollowingAuthor = isFollowing(post.user_id);
               const isOwnPost = post.user_id === user?.id;
-
               return (
                 <div key={post.id} className={`bg-card border rounded-2xl p-4 shadow-soft ${isFollowingAuthor ? "border-primary/30" : "border-border"}`}>
                   <div className="flex items-center gap-3 mb-3">
@@ -275,13 +191,11 @@ export function Forum() {
                   {post.upvotes > 20 && <p className="text-xs text-muted-foreground mb-3">🔥 {post.upvotes} corp members agree</p>}
 
                   <div className="flex items-center gap-4 pt-3 border-t border-border">
-                    <button onClick={() => handleVote(post.id, "up")}
-                      disabled={Boolean(pendingVotes[post.id])}
+                    <button onClick={() => handleVote(post.id, "up")} disabled={Boolean(pendingVotes[post.id])}
                       className={`flex items-center gap-1 text-sm transition-colors ${userVote === "up" ? "text-success" : "text-muted-foreground hover:text-foreground"} ${pendingVotes[post.id] === "up" ? "opacity-70" : ""}`}>
                       <ThumbsUp size={16} /> <span>{post.upvotes}</span>
                     </button>
-                    <button onClick={() => handleVote(post.id, "down")}
-                      disabled={Boolean(pendingVotes[post.id])}
+                    <button onClick={() => handleVote(post.id, "down")} disabled={Boolean(pendingVotes[post.id])}
                       className={`flex items-center gap-1 text-sm transition-colors ${userVote === "down" ? "text-danger" : "text-muted-foreground hover:text-foreground"} ${pendingVotes[post.id] === "down" ? "opacity-70" : ""}`}>
                       <ThumbsDown size={16} /> <span>{post.downvotes}</span>
                     </button>
