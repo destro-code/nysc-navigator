@@ -37,8 +37,12 @@ export const forumService = {
     storage.set(POSTS, [post, ...posts()]);
     return post;
   },
-  async deletePost(postId: string) {
-    storage.set(POSTS, posts().filter((post) => post.id !== postId));
+  async deletePost(userId: string, postId: string) {
+    const currentPosts = posts();
+    const post = currentPosts.find((item) => item.id === postId);
+    if (!post) throw new Error("Post not found.");
+    if (post.user_id !== userId) throw new Error("You can only delete your own posts.");
+    storage.set(POSTS, currentPosts.filter((item) => item.id !== postId));
     storage.set(VOTES, votes().filter((vote) => vote.post_id !== postId));
   },
   async vote(userId: string, postId: string, type: VoteType) {
@@ -63,7 +67,13 @@ export const forumService = {
   },
   async resolveReport(reportId: string, action: "dismissed" | "reviewed", opts?: { removePostId?: string }) {
     storage.set(REPORTS, reports().map((report) => report.id === reportId ? { ...report, status: action } : report));
-    if (opts?.removePostId) await this.deletePost(opts.removePostId);
+    if (opts?.removePostId) {
+      const post = posts().find((item) => item.id === opts.removePostId);
+      if (post) {
+        storage.set(POSTS, posts().filter((item) => item.id !== opts.removePostId));
+        storage.set(VOTES, votes().filter((vote) => vote.post_id !== opts.removePostId));
+      }
+    }
   },
   async listUserPosts(userId: string) { return (await this.listPosts()).filter((post) => post.user_id === userId); },
   async listLikedPosts(userId: string) {
