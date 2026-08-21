@@ -5,7 +5,10 @@ import type { Session } from "@/types";
 interface LocalAccount { id: string; email: string; password: string; username: string; createdAt: string; isAdmin: boolean; }
 const ACCOUNTS = "accounts";
 const SESSION = "session";
-const ensureAccounts = (): LocalAccount[] => storage.get(ACCOUNTS, [{ id: DEMO_USER_ID, email: "demo@nysc.test", password: "Demo1234", username: "Ada Okonkwo", createdAt: new Date().toISOString(), isAdmin: false }, { id: "admin-user", email: DEMO_ADMIN_EMAIL, password: "Admin1234", username: "Admin", createdAt: new Date().toISOString(), isAdmin: true }]);
+const ensureAccounts = (): LocalAccount[] => storage.get(ACCOUNTS, [
+  { id: DEMO_USER_ID, email: "demo@nysc.test", password: "Demo1234", username: "Ada Okonkwo", createdAt: new Date().toISOString(), isAdmin: false },
+  { id: "admin-user", email: DEMO_ADMIN_EMAIL, password: "Admin1234", username: "Admin", createdAt: new Date().toISOString(), isAdmin: true },
+]);
 const saveAccounts = (v: LocalAccount[]) => storage.set(ACCOUNTS, v);
 const toSession = (a: LocalAccount): Session => ({ id: a.id, email: a.email, username: a.username, isAdmin: a.isAdmin, createdAt: a.createdAt });
 
@@ -23,10 +26,27 @@ export const authService = {
     const accounts = ensureAccounts();
     if (accounts.some(a => a.email === normalized)) return { success: false as const, error: "An account with this email already exists." };
     const username = normalized.split("@")[0] || "corper";
-    const account: LocalAccount = { id: uid(), email: normalized, password, username, createdAt: new Date().toISOString(), isAdmin: false };
+    const accountId = uid();
+    const profileId = uid();
+    const account: LocalAccount = { id: accountId, email: normalized, password, username, createdAt: new Date().toISOString(), isAdmin: false };
     saveAccounts([...accounts, account]);
     const profiles = storage.get("users", seedUsers());
-    storage.set("users", [...profiles, { ...profiles[0], id: uid(), user_id: account.id, username, batch: "", stream: "", state: "", lga: "", ppa: "", status: "serving", bio: "", reg_number: "", follower_count: 0, following_count: 0 }]);
+    const cleanProfile = {
+      id: profileId,
+      user_id: accountId,
+      username,
+      batch: "",
+      stream: "",
+      state: "",
+      lga: "",
+      ppa: "",
+      status: "serving",
+      bio: "",
+      reg_number: "",
+      follower_count: 0,
+      following_count: 0,
+    };
+    storage.set("users", [...profiles, cleanProfile]);
     const session = toSession(account); storage.set(SESSION, session); return { success: true as const, session };
   },
   async logout() { storage.remove(SESSION); },
