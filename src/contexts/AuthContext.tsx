@@ -33,7 +33,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, confirmPassword: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
