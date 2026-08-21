@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUser } from "@/contexts/UserContext";
-import { supabase } from "@/integrations/supabase/client";
+import { forumService } from "@/services/forum.service";
+import type { PostFlair } from "@/types";
 
 interface CreatePostDialogProps {
   open: boolean;
@@ -43,23 +43,18 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
       return;
     }
     setIsSubmitting(true);
-
-    const { error } = await supabase.from("forum_posts").insert({
-      user_id: user.id,
-      content: content.trim(),
-      flair: flair as "cleared" | "stuck" | "question" | "info",
-    });
-
-    if (error) {
-      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
-    } else {
+    try {
+      await forumService.createPost({ user_id: user.id, content: content.trim(), flair: flair as PostFlair });
       toast({ title: "Post created!", description: "Your post has been published to the forum." });
       setContent("");
       setFlair("");
       onOpenChange(false);
       onPostCreated?.();
+    } catch {
+      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (

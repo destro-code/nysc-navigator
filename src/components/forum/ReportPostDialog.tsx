@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { forumService } from "@/services/forum.service";
 
 interface ReportPostDialogProps {
   open: boolean;
@@ -33,23 +33,19 @@ export function ReportPostDialog({ open, onOpenChange, postId }: ReportPostDialo
   const handleSubmit = async () => {
     if (!reason || !user) return;
     setIsSubmitting(true);
-
     const reportReason = reason === "other" ? details || reason : reason;
-    const { error } = await supabase.from("post_reports").insert({
-      user_id: user.id,
-      post_id: postId,
-      reason: reportReason,
-    });
-
-    if (error) {
-      toast({ title: "Error", description: error.message.includes("duplicate") ? "You've already reported this post." : "Failed to submit report.", variant: "destructive" });
-    } else {
+    try {
+      await forumService.reportPost({ user_id: user.id, post_id: postId, reason: reportReason });
       toast({ title: "Report submitted", description: "Thank you for helping keep our community safe." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to submit report.";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setReason("");
+      setDetails("");
+      setIsSubmitting(false);
+      onOpenChange(false);
     }
-    setReason("");
-    setDetails("");
-    setIsSubmitting(false);
-    onOpenChange(false);
   };
 
   return (

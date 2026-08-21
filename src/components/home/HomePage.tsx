@@ -2,6 +2,7 @@ import { MapPin, Wallet, CheckSquare, MessageCircle, Sparkles } from "lucide-rea
 import { FeatureCard } from "./FeatureCard";
 import type { TabType } from "../layout/BottomNav";
 import { useActiveBatch } from "@/hooks/useActiveBatch";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
 
 interface HomePageProps {
   onNavigate: (tab: TabType) => void;
@@ -9,6 +10,7 @@ interface HomePageProps {
 
 export function HomePage({ onNavigate }: HomePageProps) {
   const { activeBatchLabel } = useActiveBatch();
+  const { daysRemaining, clearancePercentage, isLoading } = useDashboardStats();
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
@@ -32,11 +34,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
       <section className="grid grid-cols-2 gap-3 mb-8">
         <div className="bg-accent rounded-2xl p-4">
           <p className="text-xs text-muted-foreground mb-1">Days Remaining</p>
-          <p className="text-2xl font-bold text-foreground">247</p>
+          <p className="text-2xl font-bold text-foreground">
+            {isLoading ? "--" : (daysRemaining ?? "N/A")}
+          </p>
         </div>
         <div className="bg-primary-light rounded-2xl p-4">
           <p className="text-xs text-muted-foreground mb-1">Clearance</p>
-          <p className="text-2xl font-bold text-primary">60%</p>
+          <p className="text-2xl font-bold text-primary">
+            {isLoading ? "--" : (clearancePercentage !== null ? `${clearancePercentage}%` : "N/A")}
+          </p>
         </div>
       </section>
 

@@ -1,82 +1,58 @@
-# Welcome to your Lovable project
+# NYSC Buddy — Frontend-Only Prototype
 
-## Project info
+NYSC Buddy is a mobile-first web app that helps NYSC corps members track the most stressful parts of service in one place: posting milestones, monthly allowance, clearance tasks, community forum discussions, and profile/admin workflows.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+> **This build is a frontend-only prototype.** There is no backend, database, or auth provider — all data lives in the browser (localStorage) and is seeded with realistic mock data. A future backend will replace the mock services described in [BACKEND_HANDOFF.md](docs/BACKEND_HANDOFF.md).
 
-## How can I edit this code?
+## Run locally
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+That's it. No `.env` setup, no database, no external services.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Demo accounts
 
-**Use GitHub Codespaces**
+Because auth is fake, you can log in with any email/password combination — a new local account is created on first signup. Two convenience accounts:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- **Demo user:** `demo@demo.nysc` / any password (loads the seeded profile "Ada Okonkwo").
+- **Demo admin:** `admin@demo.nysc` / any password (unlocks the `/admin` panel).
 
-## What technologies are used for this project?
+## Scripts
 
-This project is built with:
+```bash
+npm run dev        # Vite dev server
+npm run build      # Production build
+npm run preview    # Preview built app
+npm run lint       # ESLint
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Feature tour
 
-## How can I deploy this project?
+- **Home** — dashboard summary with days remaining and clearance percentage.
+- **Posting tracker** — editable reg number/stream/state and milestone timeline.
+- **Allowance tracker** — seeded monthly entries; toggle paid/pending and add new months.
+- **Clearance checklist** — in-camp and out-camp checklist with progress bar.
+- **Forum** — seeded posts with categories, voting, reporting, create/delete.
+- **Notifications** — sample notifications with mark-read and dismiss.
+- **Profile** — edit username/bio/state/stream/batch, view your posts and likes.
+- **Admin** — mock stats, moderation queue, and announcement composer.
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Project structure
 
-## Can I connect a custom domain to my Lovable project?
+```text
+src/
+  types/          Shared TypeScript contracts (the backend seam)
+  data/           Seed data + localStorage wrapper
+  services/      *Mock repository layer — swap these for real APIs later*
+  contexts/       React contexts (Auth, User)
+  hooks/          UI hooks
+  components/     Reusable UI, feature panels, and layout
+  pages/          Route-level screens
+```
 
-Yes, you can!
+## Backend to be added later
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
-
-## Backend architecture baseline
-
-The repository now includes backend planning artifacts to guide API-first implementation:
-
-- Backend stack + boundaries: `docs/architecture.md`
-- OpenAPI contract: `docs/api/openapi.yaml`
-- ADRs for key decisions: `docs/adr/`
-- Shared request/response models package: `packages/types`
+The next phase will replace every function inside `src/services/*.service.ts` with real API calls. UI components already consume typed service interfaces, so no rewiring is expected. See [BACKEND_HANDOFF.md](docs/BACKEND_HANDOFF.md) for the endpoint/table sketch a backend developer can implement against.
