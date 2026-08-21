@@ -47,9 +47,10 @@ export interface ForumPost {
 export type VoteType = "up" | "down";
 
 export interface PostVote {
+  id: string;
   post_id: string;
   user_id: string;
-  vote_type: VoteType;
+  value: 1 | -1;
 }
 
 export interface PostReport {
