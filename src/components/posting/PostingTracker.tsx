@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapPin, CheckCircle, Circle, Clock, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useUser } from "@/contexts/UserContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@/contexts/UserContext";
 import { postingService } from "@/services/posting.service";
 import type { PostingProgress } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +20,7 @@ const states = ["Lagos", "Abuja", "Kano", "Rivers", "Oyo", "Kaduna", "Enugu", "D
 
 export function PostingTracker() {
   const { user } = useAuth();
+  const { isProfileComplete, missingRequiredFields } = useUser();
   const [isTracking, setIsTracking] = useState(false);
   const [regNumber, setRegNumber] = useState("");
   const [stream, setStream] = useState("");
@@ -33,19 +34,22 @@ export function PostingTracker() {
     if (!user) { setIsLoading(false); return; }
     (async () => {
       setIsLoading(true);
-      const data = await postingService.get(user.id);
-      setRegNumber(data.reg_number);
-      setStream(data.stream);
-      setState(data.state);
-      setMilestones({
-        registration_date: data.registration_date,
-        camp_start_date: data.camp_start_date,
-        ppa_assigned_date: data.ppa_assigned_date,
-        cds_assigned_date: data.cds_assigned_date,
-        pop_date: data.pop_date,
-      });
-      setIsTracking(Boolean(data.reg_number || data.stream || data.state));
-      setIsLoading(false);
+      try {
+        const data = await postingService.get(user.id);
+        setRegNumber(data.reg_number);
+        setStream(data.stream);
+        setState(data.state);
+        setMilestones({
+          registration_date: data.registration_date,
+          camp_start_date: data.camp_start_date,
+          ppa_assigned_date: data.ppa_assigned_date,
+          cds_assigned_date: data.cds_assigned_date,
+          pop_date: data.pop_date,
+        });
+        setIsTracking(Boolean(data.reg_number || data.stream || data.state));
+      } finally {
+        setIsLoading(false);
+      }
     })();
   }, [user]);
 
@@ -186,8 +190,6 @@ export function PostingTracker() {
           </div>
         ))}
       </div>
-      </>
-      )}
     </div>
   );
 }
