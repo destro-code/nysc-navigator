@@ -29,10 +29,19 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { isProfileComplete, missingRequiredFields } = useUser();
   const maxLength = 500;
 
   const handleSubmit = async () => {
     if (!content.trim() || !flair || !user) return;
+    if (!isProfileComplete) {
+      toast({
+        title: "Complete profile first",
+        description: `Please add your ${missingRequiredFields.join(", ")} before creating a post.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSubmitting(true);
     try {
       await forumService.createPost({ user_id: user.id, content: content.trim(), flair: flair as PostFlair });
@@ -77,7 +86,7 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting}>
+          <Button onClick={handleSubmit} disabled={!isProfileComplete || !content.trim() || !flair || content.length > maxLength || isSubmitting}>
             {isSubmitting ? <><Loader2 size={16} className="mr-2 animate-spin" />Posting...</> : "Post"}
           </Button>
         </div>

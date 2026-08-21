@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { MapPin, CheckCircle, Circle, Clock, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/contexts/UserContext";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { postingService } from "@/services/posting.service";
@@ -122,6 +124,15 @@ export function PostingTracker() {
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
+      {!isProfileComplete && (
+        <Alert className="mb-5 border-warning/40 bg-warning/10">
+          <MapPin className="h-4 w-4" />
+          <AlertTitle>Profile required for accurate posting timeline</AlertTitle>
+          <AlertDescription>
+            Add your {missingRequiredFields.join(", ")} in Profile before using posting timeline calculations.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Your Journey</h2>
@@ -175,6 +186,8 @@ export function PostingTracker() {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 }

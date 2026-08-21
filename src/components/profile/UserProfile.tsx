@@ -22,7 +22,7 @@ const getStatusStyle = (status: string) => {
 };
 
 export function UserProfile() {
-  const { currentUser, isLoading } = useUser();
+  const { currentUser, isLoading, isProfileComplete, missingRequiredFields } = useUser();
   const { user } = useAuth();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [posts, setPosts] = useState<ForumPost[]>([]);
@@ -100,6 +100,19 @@ export function UserProfile() {
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
+      {!isProfileComplete && (
+        <Alert className="mb-4 border-warning/40 bg-warning/10">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Complete your profile</AlertTitle>
+          <AlertDescription className="mt-2">
+            Add your {missingRequiredFields.join(", ")} to unlock posting calculations and forum posting.
+            <Button size="sm" className="mt-3" onClick={() => setEditDialogOpen(true)}>
+              <Settings size={14} className="mr-1" /> Edit profile
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-4">

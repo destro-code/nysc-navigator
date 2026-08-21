@@ -9,6 +9,8 @@ export type { UserProfile };
 interface UserContextType {
   currentUser: UserProfile | null;
   isLoading: boolean;
+  missingRequiredFields: Array<"batch" | "stream" | "state" | "status">;
+  isProfileComplete: boolean;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   followUser: (userId: string) => Promise<void>;
   unfollowUser: (userId: string) => Promise<void>;
