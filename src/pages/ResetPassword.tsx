@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+import { PASSWORD_REQUIREMENTS, useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ResetPassword() {
@@ -14,43 +14,48 @@ export default function ResetPassword() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token") || "mock-token";
-  
   const { resetPassword } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const passwordRequirements = [
-    { label: "At least 6 characters", met: password.length >= 6 },
-    { label: "Contains a number", met: /\d/.test(password) },
-    { label: "Contains a letter", met: /[a-zA-Z]/.test(password) },
-  ];
+  const passwordRequirements = PASSWORD_REQUIREMENTS.map((requirement) => ({
+    label: requirement.label,
+    met: requirement.test(password),
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-    
+
     setIsSubmitting(true);
 
-    const result = await resetPassword(token, password);
-    
-    if (result.success) {
-      toast({
-        title: "Password reset!",
-        description: "Your password has been successfully reset.",
-      });
-      navigate("/login");
-    } else {
-      setError(result.error || "Failed to reset password");
+    try {
+      const result = await resetPassword(password);
+
+      if (result.success) {
+        toast({
+          title: "Password reset!",
+          description: "Your password has been successfully reset.",
+        });
+        navigate("/login");
+      } else {
+        setError(result.error || "Failed to reset password");
+      }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsSubmitting(false);
   };
 
   return (

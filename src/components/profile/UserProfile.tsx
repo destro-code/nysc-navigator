@@ -1,22 +1,23 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, Clock, AlertTriangle, Edit2, Settings } from "lucide-react";
+import { CheckCircle, Clock, AlertTriangle, Edit2, ChevronLeft, ChevronRight, MessageCircle, ThumbsUp } from "lucide-react";
 import { ProfileEditDialog } from "./ProfileEditDialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { forumService } from "@/services/forum.service";
+import type { ForumPost } from "@/types";
+
+const POSTS_PER_PAGE = 5;
 
 const getStatusStyle = (status: string) => {
   switch (status) {
-    case "cleared":
-      return { bg: "bg-success", text: "text-success-foreground", label: "Cleared", icon: <CheckCircle size={12} /> };
-    case "serving":
-      return { bg: "bg-warning", text: "text-warning-foreground", label: "Serving", icon: <Clock size={12} /> };
-    case "in-camp":
-      return { bg: "bg-primary", text: "text-primary-foreground", label: "In Camp", icon: <AlertTriangle size={12} /> };
-    default:
-      return { bg: "bg-muted", text: "text-muted-foreground", label: "Unknown", icon: <Clock size={12} /> };
+    case "cleared": return { bg: "bg-success", text: "text-success-foreground", label: "Cleared", icon: <CheckCircle size={12} /> };
+    case "serving": return { bg: "bg-warning", text: "text-warning-foreground", label: "Serving", icon: <Clock size={12} /> };
+    case "in-camp": return { bg: "bg-primary", text: "text-primary-foreground", label: "In Camp", icon: <AlertTriangle size={12} /> };
+    default: return { bg: "bg-muted", text: "text-muted-foreground", label: "Unknown", icon: <Clock size={12} /> };
   }
 };
 
@@ -24,17 +25,78 @@ export function UserProfile() {
   const { currentUser, isLoading } = useUser();
   const { user } = useAuth();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [posts, setPosts] = useState<ForumPost[]>([]);
+  const [likedPosts, setLikedPosts] = useState<ForumPost[]>([]);
+  const [activeTab, setActiveTab] = useState("posts");
+  const [postsPage, setPostsPage] = useState(1);
+  const [likesPage, setLikesPage] = useState(1);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const [authored, liked] = await Promise.all([
+        forumService.listUserPosts(user.id),
+        forumService.listLikedPosts(user.id),
+      ]);
+      setPosts(authored);
+      setLikedPosts(liked);
+    })();
+  }, [user]);
+
+  const timeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const paginate = (items: ForumPost[], currentPage: number) => {
+    const totalPages = Math.max(1, Math.ceil(items.length / POSTS_PER_PAGE));
+    const pageItems = items.slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE);
+    return { totalPages, pageItems };
+  };
+
+  const paginatedPosts = useMemo(() => paginate(posts, postsPage), [posts, postsPage]);
+  const paginatedLikes = useMemo(() => paginate(likedPosts, likesPage), [likedPosts, likesPage]);
 
   if (isLoading || !currentUser) {
-    return (
-      <div className="px-4 py-6 pb-24 animate-fade-in">
-        <p className="text-muted-foreground text-center">Loading profile...</p>
-      </div>
-    );
+    return <div className="px-4 py-6 pb-24 animate-fade-in"><p className="text-muted-foreground text-center">Loading profile...</p></div>;
   }
 
   const statusStyle = getStatusStyle(currentUser.status);
   const initials = currentUser.username.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const renderPostList = (items: ForumPost[], totalPages: number, currentPage: number, setPage: (p: number) => void, emptyTitle: string, emptyDescription: string) => {
+    if (items.length === 0) return <EmptyState icon={<MessageCircle size={28} />} title={emptyTitle} description={emptyDescription} />;
+    return (
+      <>
+        <div className="space-y-4">
+          {items.map((post) => (
+            <div key={post.id} className="bg-card border border-border rounded-2xl p-4 shadow-soft">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-foreground">{post.author_username}</p>
+                <p className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</p>
+              </div>
+              <p className="text-foreground mb-3">{post.content}</p>
+              <div className="flex items-center gap-4 pt-3 border-t border-border text-muted-foreground">
+                <span className="flex items-center gap-1 text-sm"><ThumbsUp size={15} />{post.upvotes}</span>
+                <span className="flex items-center gap-1 text-sm"><MessageCircle size={15} />{post.comments_count}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}><ChevronLeft size={16} /></Button>
+            <span className="text-sm text-muted-foreground px-3">Page {currentPage} of {totalPages}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}><ChevronRight size={16} /></Button>
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="px-4 py-6 pb-24 animate-fade-in">
@@ -50,9 +112,7 @@ export function UserProfile() {
               <p className="text-sm text-muted-foreground">{currentUser.state || "No state set"}</p>
             </div>
           </div>
-          <Button variant="outline" size="icon" onClick={() => setEditDialogOpen(true)}>
-            <Edit2 size={18} />
-          </Button>
+          <Button variant="outline" size="icon" onClick={() => setEditDialogOpen(true)}><Edit2 size={18} /></Button>
         </div>
 
         <div className="flex items-center gap-2 mb-4">
@@ -75,22 +135,16 @@ export function UserProfile() {
         </div>
       </div>
 
-      <Tabs defaultValue="posts" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full bg-muted rounded-xl p-1 mb-4">
           <TabsTrigger value="posts" className="flex-1 rounded-lg">Posts</TabsTrigger>
           <TabsTrigger value="likes" className="flex-1 rounded-lg">Likes</TabsTrigger>
         </TabsList>
         <TabsContent value="posts">
-          <div className="text-center py-8 text-muted-foreground">
-            <p>No posts yet</p>
-            <p className="text-sm mt-1">Posts will appear here</p>
-          </div>
+          {renderPostList(paginatedPosts.pageItems, paginatedPosts.totalPages, postsPage, setPostsPage, "No posts published yet", "When you share your first update in the forum, it will appear here.")}
         </TabsContent>
         <TabsContent value="likes">
-          <div className="text-center py-8 text-muted-foreground">
-            <p>No liked posts yet</p>
-            <p className="text-sm mt-1">Posts you like will appear here</p>
-          </div>
+          {renderPostList(paginatedLikes.pageItems, paginatedLikes.totalPages, likesPage, setLikesPage, "No liked posts yet", "Posts you upvote in the forum will show up in this tab.")}
         </TabsContent>
       </Tabs>
 
