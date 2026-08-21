@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap, Loader2 } from "lucide-react";
+import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { clearanceService } from "@/services/clearance.service";
+import { serviceProfileService } from "@/services/service-profile.service";
 import { normalizeApiError } from "@/lib/api-error";
 import { NetworkError } from "@/components/ui/network-error";
+import type { ServiceStage } from "@/data/service-profile";
 
 interface ChecklistItem { id: string; label: string; description: string; completed: boolean; priority: "high" | "medium" | "low"; }
 interface ChecklistSection { id: string; title: string; icon: React.ReactNode; items: ChecklistItem[]; }
@@ -35,20 +37,36 @@ const initialOutCampData: ChecklistSection[] = [
 ];
 const applyCompleted = (sections: ChecklistSection[], completedMap: Map<string, boolean>) => sections.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })) }));
 
+const stageMeta: Record<ServiceStage, { label: string; description: string; tab: "incamp" | "outcamp" }> = {
+  orientation: { label: "Orientation", description: "Focus on camp documents, registration and essentials.", tab: "incamp" },
+  "primary-assignment": { label: "Primary Assignment", description: "Your PPA/deployment tasks are now the priority.", tab: "outcamp" },
+  "secondary-assignment": { label: "Secondary Assignment / CDS", description: "Track your monthly clearance and CDS responsibilities.", tab: "outcamp" },
+  "winding-up": { label: "Winding-up / POP", description: "Track final clearance and end-of-service requirements.", tab: "outcamp" },
+};
+
 export function ClearanceChecklist() {
   const { user } = useAuth();
   const [inCampData, setInCampData] = useState(initialInCampData);
   const [outCampData, setOutCampData] = useState(initialOutCampData);
-  const [activeTab, setActiveTab] = useState("incamp");
+  const [activeTab, setActiveTab] = useState<"incamp" | "outcamp">("incamp");
+  const [stage, setStage] = useState<ServiceStage>("orientation");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const loadProgress = useCallback(async () => {
     if (!user) return;
     setIsLoading(true); setErrorMessage(null);
-    try { const data = await clearanceService.list(user.id); const completedMap = new Map(data.map((d) => [d.item_id, d.completed])); setInCampData((prev) => applyCompleted(prev, completedMap)); setOutCampData((prev) => applyCompleted(prev, completedMap)); }
-    catch (error) { setErrorMessage(normalizeApiError(error, "Unable to load checklist progress right now.")); }
+    try {
+      const [data, serviceProfile] = await Promise.all([clearanceService.list(user.id), serviceProfileService.get(user.id)]);
+      const completedMap = new Map(data.map((d) => [d.item_id, d.completed]));
+      setInCampData((prev) => applyCompleted(prev, completedMap));
+      setOutCampData((prev) => applyCompleted(prev, completedMap));
+      setStage(serviceProfile.stage);
+      setActiveTab(stageMeta[serviceProfile.stage].tab);
+    } catch (error) { setErrorMessage(normalizeApiError(error, "Unable to load checklist progress right now.")); }
     finally { setIsLoading(false); }
   }, [user]);
+
   useEffect(() => { void loadProgress(); }, [loadProgress]);
 
   const toggleItem = async (sectionId: string, itemId: string, isInCamp: boolean) => {
@@ -71,5 +89,16 @@ export function ClearanceChecklist() {
   if (errorMessage) return <NetworkError message={errorMessage} onRetry={() => void loadProgress()} />;
 
   const renderSection = (section: ChecklistSection, isInCamp: boolean) => <div key={section.id} className="mb-6"><div className="flex items-center gap-2 mb-3"><span className="text-primary">{section.icon}</span><h3 className="font-semibold text-foreground">{section.title}</h3></div><div className="space-y-2">{section.items.map((item) => <button key={item.id} onClick={() => void toggleItem(section.id, item.id, isInCamp)} className={`w-full p-3 rounded-xl border text-left transition-all duration-200 ${item.completed ? "bg-success/5 border-success/20" : "bg-card border-border hover:border-primary/30"}`}><div className="flex items-start gap-3"><div className={`mt-0.5 ${item.completed ? "text-success" : "text-muted-foreground"}`}>{item.completed ? <CheckSquare size={20} /> : <Square size={20} />}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-0.5 flex-wrap"><p className={`font-medium text-sm ${item.completed ? "text-success line-through" : "text-foreground"}`}>{item.label}</p>{!item.completed && <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${getPriorityColor(item.priority)}`}>{item.priority}</span>}</div><p className="text-xs text-muted-foreground">{item.description}</p></div></div></button>)}</div></div>;
-  return <div className="px-4 py-6 pb-24 animate-fade-in"><h2 className="text-2xl font-bold text-foreground mb-2">Clearance Checklist</h2><p className="text-muted-foreground mb-6">Track your NYSC clearance requirements</p><div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-soft"><div className="flex items-center justify-between mb-4"><div className="flex items-center gap-3"><div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">{currentProgress.percentage === 100 ? <Trophy size={24} className="text-primary" /> : <CheckSquare size={24} className="text-primary" />}</div><div><p className="text-sm text-muted-foreground">{activeTab === "incamp" ? "In-Camp" : "Out-Camp"} Progress</p><p className="text-2xl font-bold text-foreground">{Math.round(currentProgress.percentage)}%</p></div></div><div className="text-right"><p className="text-2xl font-bold text-primary">{currentProgress.completed}</p><p className="text-xs text-muted-foreground">of {currentProgress.total} items</p></div></div><Progress value={currentProgress.percentage} className="h-2" />{currentProgress.percentage < 100 && <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1"><AlertCircle size={12} /> {currentProgress.total - currentProgress.completed} items remaining</p>}</div><Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6"><TabsList className="grid w-full grid-cols-2 mb-4"><TabsTrigger value="incamp" className="text-sm">✅ In-Camp</TabsTrigger><TabsTrigger value="outcamp" className="text-sm">📌 Out-Camp</TabsTrigger></TabsList><TabsContent value="incamp" className="mt-0">{inCampData.map((s) => renderSection(s, true))}</TabsContent><TabsContent value="outcamp" className="mt-0">{outCampData.map((s) => renderSection(s, false))}</TabsContent></Tabs><Button variant="outline" className="w-full" size="lg" onClick={exportChecklist}><Download size={18} className="mr-2" /> Export / Print Checklist</Button></div>;
+
+  return <div className="px-4 py-6 pb-24 animate-fade-in">
+    <h2 className="text-2xl font-bold text-foreground mb-2">Clearance Checklist</h2>
+    <p className="text-muted-foreground mb-4">Track requirements relevant to your current NYSC stage.</p>
+    <div className="bg-primary/5 border border-primary/15 rounded-2xl p-4 mb-6">
+      <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><Calendar size={20} className="text-primary" /></div><div><p className="text-xs uppercase tracking-wide font-semibold text-primary">Current stage</p><p className="font-bold text-foreground">{stageMeta[stage].label}</p><p className="text-sm text-muted-foreground mt-1">{stageMeta[stage].description}</p></div></div>
+    </div>
+    <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-soft"><div className="flex items-center justify-between mb-4"><div className="flex items-center gap-3"><div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">{currentProgress.percentage === 100 ? <Trophy size={24} className="text-primary" /> : <CheckSquare size={24} className="text-primary" />}</div><div><p className="text-sm text-muted-foreground">{activeTab === "incamp" ? "In-Camp" : "Out-Camp"} Progress</p><p className="text-2xl font-bold text-foreground">{Math.round(currentProgress.percentage)}%</p></div></div><div className="text-right"><p className="text-2xl font-bold text-primary">{currentProgress.completed}</p><p className="text-xs text-muted-foreground">of {currentProgress.total} items</p></div></div><Progress value={currentProgress.percentage} className="h-2" />{currentProgress.percentage < 100 && <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1"><AlertCircle size={12} /> {currentProgress.total - currentProgress.completed} items remaining</p>}</div>
+    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "incamp" | "outcamp")} className="mb-6"><TabsList className="grid w-full grid-cols-2 mb-4"><TabsTrigger value="incamp" className="text-sm">✅ In-Camp</TabsTrigger><TabsTrigger value="outcamp" className="text-sm">📌 Out-Camp</TabsTrigger></TabsList><TabsContent value="incamp" className="mt-0">{inCampData.map((s) => renderSection(s, true))}</TabsContent><TabsContent value="outcamp" className="mt-0">{outCampData.map((s) => renderSection(s, false))}</TabsContent></Tabs>
+    {stage === "orientation" && <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4"><Lock size={13} /> Out-Camp tasks are visible for planning but your current stage is Orientation.</div>}
+    <Button variant="outline" className="w-full" size="lg" onClick={exportChecklist}><Download size={18} className="mr-2" /> Export / Print Checklist</Button>
+  </div>;
 }
