@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+import { PASSWORD_REQUIREMENTS, useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Signup() {
@@ -14,16 +14,20 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [verificationSentTo, setVerificationSentTo] = useState<string | null>(null);
   
-  const { signup } = useAuth();
+  const { signup, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const passwordRequirements = [
-    { label: "At least 6 characters", met: password.length >= 6 },
-    { label: "Contains a number", met: /\d/.test(password) },
-    { label: "Contains a letter", met: /[a-zA-Z]/.test(password) },
-  ];
+  useEffect(() => {
+    if (isAuthenticated) navigate("/", { replace: true });
+  }, [isAuthenticated, navigate]);
+
+  const passwordRequirements = PASSWORD_REQUIREMENTS.map((requirement) => ({
+    label: requirement.label,
+    met: requirement.test(password),
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,18 +35,59 @@ export default function Signup() {
     setIsSubmitting(true);
 
     try {
-      const result = await signup(email, password, confirmPassword);
+      const result = await signup(email.trim(), password, confirmPassword);
 
       if (result.success) {
-      toast({ title: "Account created!", description: "Welcome to NYSC Buddy. Let's get you started." });
-      navigate("/");
+        toast({
+          title: "Account created!",
+          description: "Welcome to NYSC Buddy. Let's get you started.",
+        });
+        navigate("/");
       } else {
         setError(result.error || "Signup failed");
       }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (verificationSentTo) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="p-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">N</span>
+            </div>
+            <span className="font-bold text-foreground">NYSC Buddy</span>
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col justify-center px-6 py-12 max-w-md mx-auto w-full text-center space-y-4">
+          <h1 className="text-2xl font-bold text-foreground">Confirm your email</h1>
+          <p className="text-muted-foreground">
+            We sent a confirmation link to <strong>{verificationSentTo}</strong>. Please open the email and confirm your account.
+          </p>
+          <Button onClick={() => navigate("/login")} size="lg" className="w-full">
+            I’ve confirmed my email
+          </Button>
+          <button
+            type="button"
+            onClick={() => setVerificationSentTo(null)}
+            className="text-sm text-primary hover:underline"
+          >
+            Use a different email
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

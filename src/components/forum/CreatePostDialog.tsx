@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { forumService } from "@/services/forum.service";
+import type { PostFlair } from "@/types";
 
 interface CreatePostDialogProps {
   open: boolean;
@@ -28,28 +29,29 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { isProfileComplete, missingRequiredFields } = useUser();
   const maxLength = 500;
 
   const handleSubmit = async () => {
     if (!content.trim() || !flair || !user) return;
-    setIsSubmitting(true);
-
-    try {
-      const { error } = await supabase.from("forum_posts").insert({
-        user_id: user.id,
-        content: content.trim(),
-        flair: flair as "cleared" | "stuck" | "question" | "info",
+    if (!isProfileComplete) {
+      toast({
+        title: "Complete profile first",
+        description: `Please add your ${missingRequiredFields.join(", ")} before creating a post.`,
+        variant: "destructive",
       });
-
-      if (error) {
-        toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
-      } else {
-        toast({ title: "Post created!", description: "Your post has been published to the forum." });
-        setContent("");
-        setFlair("");
-        onOpenChange(false);
-        onPostCreated?.();
-      }
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await forumService.createPost({ user_id: user.id, content: content.trim(), flair: flair as PostFlair });
+      toast({ title: "Post created!", description: "Your post has been published to the forum." });
+      setContent("");
+      setFlair("");
+      onOpenChange(false);
+      onPostCreated?.();
+    } catch {
+      toast({ title: "Error", description: "Failed to create post.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -84,7 +86,7 @@ export function CreatePostDialog({ open, onOpenChange, onPostCreated }: CreatePo
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!content.trim() || !flair || content.length > maxLength || isSubmitting}>
+          <Button onClick={handleSubmit} disabled={!isProfileComplete || !content.trim() || !flair || content.length > maxLength || isSubmitting}>
             {isSubmitting ? <><Loader2 size={16} className="mr-2 animate-spin" />Posting...</> : "Post"}
           </Button>
         </div>

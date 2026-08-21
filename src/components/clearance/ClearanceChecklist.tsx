@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { CheckSquare, Square, Download, Trophy, AlertCircle, FileText, Briefcase, Calendar, GraduationCap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { clearanceService } from "@/services/clearance.service";
+import { normalizeApiError } from "@/lib/api-error";
+import { NetworkError } from "@/components/ui/network-error";
 
 interface ChecklistItem {
   id: string;
@@ -89,59 +91,52 @@ const initialOutCampData: ChecklistSection[] = [
   },
 ];
 
+const applyCompleted = (sections: ChecklistSection[], completedMap: Map<string, boolean>): ChecklistSection[] =>
+  sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
+  }));
+
 export function ClearanceChecklist() {
   const { user } = useAuth();
   const [inCampData, setInCampData] = useState<ChecklistSection[]>(initialInCampData);
   const [outCampData, setOutCampData] = useState<ChecklistSection[]>(initialOutCampData);
   const [activeTab, setActiveTab] = useState("incamp");
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadProgress = useCallback(async () => {
     if (!user) return;
-    const loadProgress = async () => {
-      setIsLoading(true);
-      const { data } = await supabase.from("clearance_progress").select("*").eq("user_id", user.id);
-      if (data) {
-        const completedMap = new Map(data.map((d) => [d.item_id, d.completed]));
-        setInCampData((prev) => prev.map((section) => ({
-          ...section,
-          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
-        })));
-        setOutCampData((prev) => prev.map((section) => ({
-          ...section,
-          items: section.items.map((item) => ({ ...item, completed: completedMap.get(item.id) ?? item.completed })),
-        })));
-      }
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const data = await clearanceService.list(user.id);
+      const completedMap = new Map<string, boolean>(data.map((d) => [d.item_id, d.completed]));
+      setInCampData((prev) => applyCompleted(prev, completedMap));
+      setOutCampData((prev) => applyCompleted(prev, completedMap));
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error, "Unable to load checklist progress right now."));
+    } finally {
       setIsLoading(false);
-    };
-    loadProgress();
+    }
   }, [user]);
+
+  useEffect(() => { if (user) loadProgress(); }, [loadProgress, user]);
 
   const toggleItem = async (sectionId: string, itemId: string, isInCamp: boolean) => {
     if (!user) return;
     const setter = isInCamp ? setInCampData : setOutCampData;
-    const tab = isInCamp ? "incamp" : "outcamp";
+    const tab: "incamp" | "outcamp" = isInCamp ? "incamp" : "outcamp";
     let newCompleted = false;
+    setter((prev) => prev.map((section) => section.id === sectionId ? {
+      ...section,
+      items: section.items.map((item) => {
+        if (item.id === itemId) { newCompleted = !item.completed; return { ...item, completed: newCompleted }; }
+        return item;
+      }),
+    } : section));
 
-    setter((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? { ...section, items: section.items.map((item) => {
-              if (item.id === itemId) { newCompleted = !item.completed; return { ...item, completed: newCompleted }; }
-              return item;
-            }) }
-          : section
-      )
-    );
-
-    await supabase.from("clearance_progress").upsert({
-      user_id: user.id,
-      item_id: itemId,
-      section_id: sectionId,
-      tab,
-      completed: !newCompleted ? false : true,
-      completed_at: !newCompleted ? null : new Date().toISOString(),
-    }, { onConflict: "user_id,item_id" });
+    await clearanceService.toggle({ user_id: user.id, item_id: itemId, section_id: sectionId, tab, completed: newCompleted });
   };
 
   const calculateProgress = (sections: ChecklistSection[]) => {
@@ -160,9 +155,8 @@ export function ClearanceChecklist() {
     }
   };
 
-  if (isLoading) {
-    return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
-  }
+  if (isLoading) return <div className="px-4 py-6 pb-24 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  if (errorMessage) return <NetworkError message={errorMessage} onRetry={() => void loadProgress()} />;
 
   const renderSection = (section: ChecklistSection, isInCamp: boolean) => (
     <div key={section.id} className="mb-6">

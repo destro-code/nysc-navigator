@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,13 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (isAuthenticated) navigate("/", { replace: true });
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,14 +28,21 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const result = await login(email, password);
+      const result = await login(email.trim(), password);
 
       if (result.success) {
-      toast({ title: "Welcome back!", description: "You have successfully logged in." });
-      navigate("/");
+        toast({ title: "Welcome back!", description: "You have successfully logged in." });
+        navigate("/");
       } else {
         setError(result.error || "Login failed");
       }
+    } catch (err) {
+      const apiErrorText = err instanceof Error ? err.message : "";
+      setError(
+        apiErrorText
+          ? `Something went wrong. Please try again. ${apiErrorText}`
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
