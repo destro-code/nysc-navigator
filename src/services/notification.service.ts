@@ -1,52 +1,11 @@
-import { supabase } from "@/lib/supabase";
+import { storage, uid } from "@/data/storage";
+import { seedNotifications } from "@/data/seed";
 import type { AppNotification, NotificationType } from "@/types";
-
-export const notificationService = {
-  async list(userId: string): Promise<AppNotification[]> {
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return (data ?? []) as AppNotification[];
-  },
-
-  async unreadCount(userId: string): Promise<number> {
-    const { count, error } = await supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("read", false);
-    if (error) throw error;
-    return count ?? 0;
-  },
-
-  async markRead(userId: string, notificationId: string): Promise<void> {
-    const { error } = await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("id", notificationId)
-      .eq("user_id", userId);
-    if (error) throw error;
-  },
-
-  async markAllRead(userId: string): Promise<void> {
-    const { error } = await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("user_id", userId)
-      .eq("read", false);
-    if (error) throw error;
-  },
-
-  async create(userId: string, type: NotificationType, title: string, message: string): Promise<AppNotification> {
-    const { data, error } = await supabase
-      .from("notifications")
-      .insert({ user_id: userId, type, title, message })
-      .select("*")
-      .single();
-    if (error) throw error;
-    return data as AppNotification;
-  },
+const key=(id:string)=>`notifications.${id}`;
+export const notificationService={
+ async list(userId:string){return storage.get<AppNotification[]>(key(userId),userId==="demo-user-1"?seedNotifications():[]).sort((a,b)=>+new Date(b.created_at)-+new Date(a.created_at));},
+ async unreadCount(userId:string){return (await this.list(userId)).filter(n=>!n.read).length;},
+ async markRead(userId:string,id:string){storage.set(key(userId),(await this.list(userId)).map(n=>n.id===id?{...n,read:true}:n));},
+ async markAllRead(userId:string){storage.set(key(userId),(await this.list(userId)).map(n=>({...n,read:true})));},
+ async create(userId:string,type:NotificationType,title:string,message:string){const n:AppNotification={id:uid(),user_id:userId,type,title,message,created_at:new Date().toISOString(),read:false};storage.set(key(userId),[n,...await this.list(userId)]);return n;},
 };
